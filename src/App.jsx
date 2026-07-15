@@ -5,6 +5,7 @@ import ReceptionPage from './pages/ReceptionPage'
 import CheckoutPage from './pages/CheckoutPage'
 import HousekeepingPage from './pages/HousekeepingPage'
 import ReportsPage from './pages/ReportsPage'
+import AboutPage from './pages/AboutPage'
 import { useHotelState } from './hooks/useHotelState'
 import { ROOM_STATUSES } from './constants/rooms'
 import { ROLES } from './constants/roles'
@@ -16,9 +17,8 @@ export default function App() {
   const [activeModule, setActiveModule] = useState('reservations')
   const {
     rooms,
-    checkInHistory,
-    checkOutHistory,
     reservations,
+    loading,
     checkIn,
     checkOut,
     markAsClean,
@@ -51,12 +51,17 @@ export default function App() {
 
   return (
     <AppLayout activeModule={activeModule} onNavigate={setActiveModule} stats={stats} role={role} onRoleChange={handleRoleChange}>
-      {!canViewActiveModule && (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
-          <p className="text-sm text-slate-500">Este módulo no está disponible para el rol seleccionado.</p>
+      {loading && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-12 text-center shadow-sm">
+          <p className="text-sm text-zinc-500">Cargando datos desde la API…</p>
         </div>
       )}
-      {canViewActiveModule && activeModule === 'reservations' && (
+      {!loading && !canViewActiveModule && (
+        <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900 p-12 text-center shadow-sm">
+          <p className="text-sm text-zinc-500">Este módulo no está disponible para el rol seleccionado.</p>
+        </div>
+      )}
+      {!loading && canViewActiveModule && activeModule === 'reservations' && (
         <ReservationsPage
           rooms={rooms}
           reservations={reservations}
@@ -65,7 +70,7 @@ export default function App() {
           onCancelReservation={cancelReservation}
         />
       )}
-      {canViewActiveModule && activeModule === 'reception' && (
+      {!loading && canViewActiveModule && activeModule === 'reception' && (
         <ReceptionPage
           rooms={rooms}
           reservations={reservations}
@@ -73,19 +78,18 @@ export default function App() {
           onConvertReservation={markReservationCheckedIn}
         />
       )}
-      {canViewActiveModule && activeModule === 'checkout' && (
+      {!loading && canViewActiveModule && activeModule === 'checkout' && (
         <CheckoutPage rooms={rooms} onCheckOut={checkOut} />
       )}
-      {canViewActiveModule && activeModule === 'housekeeping' && (
+      {!loading && canViewActiveModule && activeModule === 'housekeeping' && (
         <HousekeepingPage
           rooms={rooms}
           onMarkAsClean={markAsClean}
           onToggleMaintenance={toggleMaintenance}
         />
       )}
-      {canViewActiveModule && activeModule === 'reports' && (
-        <ReportsPage rooms={rooms} checkInHistory={checkInHistory} checkOutHistory={checkOutHistory} />
-      )}
+      {!loading && canViewActiveModule && activeModule === 'reports' && <ReportsPage rooms={rooms} />}
+      {!loading && canViewActiveModule && activeModule === 'about' && <AboutPage />}
     </AppLayout>
   )
 }

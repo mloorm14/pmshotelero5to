@@ -1,173 +1,132 @@
-import { useEffect, useState } from 'react'
-import { INITIAL_ROOMS, ROOM_STATUSES } from '../constants/rooms'
+import { useCallback, useEffect, useState } from 'react'
+import { ROOM_STATUSES } from '../constants/rooms'
 import { RESERVATION_STATUSES } from '../constants/reservations'
-import { loadState, saveState } from '../utils/storage'
+import { api } from '../utils/api'
+import { useLog } from '../context/LogContext'
 
-function createInitialState() {
-  return {
-    rooms: INITIAL_ROOMS,
-    checkInHistory: [],
-    checkOutHistory: [],
-    reservations: [],
-  }
-}
+export function useHotelState() {
+  const { addLog } = useLog()
+  const [rooms, setRooms] = useState([])
+  const [reservations, setReservations] = useState([])
+  const [loading, setLoading] = useState(true)
 
-function normalizeState(saved) {
-  if (!saved?.rooms) return createInitialState()
-
-  const rooms = INITIAL_ROOMS.map((template) => {
-    const savedRoom = saved.rooms.find((r) => r.id === template.id)
-    if (!savedRoom) return { ...template }
-    return {
-      ...template,
-      ...savedRoom,
-      guest: savedRoom.guest ?? null,
-      billing: savedRoom.billing ?? null,
+  const refresh = useCallback(async () => {
+    try {
+      const [roomsData, reservationsData] = await Promise.all([api.getRooms(), api.getReservations()])
+      setRooms(roomsData)
+      setReservations(reservationsData)
+    } catch (err) {
+      addLog(`Error de conexión con la API: ${err.message}`, 'error')
+    } finally {
+      setLoading(false)
     }
-  })
+  }, [addLog])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  async function checkIn(roomId, guest, billing) {
+    const room = rooms.find((r) => r.id === roomId)
+    try {
+      await api.checkIn({ roomId, guest, billing })
+      addLog(`Check-in exitoso: ${guest.fullName} en habitación ${room?.number ?? roomId}`, 'success')
+      await refresh()
+      return true
+    } catch (err) {
+      addLog(`Check-in bloqueado: ${err.message}`, 'error')
+      return false
+    }
+  }
+
+  async function checkOut(roomId) {
+    const room = rooms.find((r) => r.id === roomId)
+    try {
+      await api.checkOut({ roomId })
+      addLog(`Check-out exitoso: habitación ${room?.number ?? roomId}`, 'success')
+      await refresh()
+      return true
+    } catch (err) {
+      addLog(`Check-out bloqueado: ${err.message}`, 'error')
+      return false
+    }
+  }
+
+  async function addReservation({ roomId, guestName, checkInDate, checkOutDate }) {
+    const room = rooms.find((r) => r.id === roomId)
+    try {
+      await api.addReservation({ roomId, guestName, checkInDate, checkOutDate })
+      addLog(`Reserva creada: ${guestName} — habitación ${room?.number ?? roomId}`, 'success')
+      await refresh()
+      return true
+    } catch (err) {
+      addLog(`Error al crear la reserva: ${err.message}`, 'error')
+      return false
+    }
+  }
+
+  async function confirmReservation(reservationId) {
+    try {
+      await api.updateReservation(reservationId, { status: RESERVATION_STATUSES.CONFIRMED })
+      addLog('Reserva confirmada', 'success')
+      await refresh()
+    } catch (err) {
+      addLog(`Error al confirmar la reserva: ${err.message}`, 'error')
+    }
+  }
+
+  async function cancelReservation(reservationId) {
+    try {
+      await api.updateReservation(reservationId, { status: RESERVATION_STATUSES.CANCELLED })
+      addLog('Reserva cancelada', 'success')
+      await refresh()
+    } catch (err) {
+      addLog(`Error al cancelar la reserva: ${err.message}`, 'error')
+    }
+  }
+
+  async function markReservationCheckedIn(reservationId) {
+    try {
+      await api.updateReservation(reservationId, { checkedIn: true })
+      await refresh()
+    } catch (err) {
+      addLog(`Error al vincular la reserva con el check-in: ${err.message}`, 'error')
+    }
+  }
+
+  async function markAsClean(roomId) {
+    const room = rooms.find((r) => r.id === roomId)
+    try {
+      await api.updateRoom(roomId, { status: ROOM_STATUSES.CLEAN })
+      addLog(`Habitación ${room?.number ?? roomId} marcada como limpia`, 'success')
+      await refresh()
+    } catch (err) {
+      addLog(`Error al actualizar la habitación: ${err.message}`, 'error')
+    }
+  }
+
+  async function toggleMaintenance(roomId) {
+    const room = rooms.find((r) => r.id === roomId)
+    const goingIntoMaintenance = room?.status !== ROOM_STATUSES.MAINTENANCE
+
+    try {
+      if (goingIntoMaintenance) {
+        await api.updateRoom(roomId, { status: ROOM_STATUSES.MAINTENANCE, guest: null, billing: null })
+        addLog(`Habitación ${room?.number ?? roomId} enviada a mantenimiento`, 'success')
+      } else {
+        await api.updateRoom(roomId, { status: ROOM_STATUSES.CLEAN })
+        addLog(`Habitación ${room?.number ?? roomId} finalizó mantenimiento`, 'success')
+      }
+      await refresh()
+    } catch (err) {
+      addLog(`Error al actualizar la habitación: ${err.message}`, 'error')
+    }
+  }
 
   return {
     rooms,
-    checkInHistory: saved.checkInHistory ?? [],
-    checkOutHistory: saved.checkOutHistory ?? [],
-    reservations: saved.reservations ?? [],
-  }
-}
-
-export function useHotelState() {
-  const [state, setState] = useState(() => {
-    const saved = loadState()
-    return saved ? normalizeState(saved) : createInitialState()
-  })
-
-  useEffect(() => {
-    saveState(state)
-  }, [state])
-
-  function checkIn(roomId, guest, billing) {
-    setState((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((room) =>
-        room.id === roomId
-          ? {
-              ...room,
-              status: ROOM_STATUSES.OCCUPIED,
-              guest,
-              billing,
-            }
-          : room,
-      ),
-      checkInHistory: [
-        {
-          id: Date.now(),
-          roomId,
-          roomNumber: prev.rooms.find((r) => r.id === roomId)?.number,
-          guest,
-          billing,
-          at: new Date().toISOString(),
-        },
-        ...prev.checkInHistory,
-      ],
-    }))
-  }
-
-  function checkOut(roomId) {
-    setState((prev) => {
-      const room = prev.rooms.find((r) => r.id === roomId)
-      return {
-        ...prev,
-        rooms: prev.rooms.map((r) =>
-          r.id === roomId
-            ? { ...r, status: ROOM_STATUSES.DIRTY, guest: null, billing: null }
-            : r,
-        ),
-        checkOutHistory: [
-          {
-            id: Date.now(),
-            roomId,
-            roomNumber: room?.number,
-            guest: room?.guest,
-            billing: room?.billing,
-            at: new Date().toISOString(),
-          },
-          ...prev.checkOutHistory,
-        ],
-      }
-    })
-  }
-
-  function addReservation({ roomId, guestName, checkInDate, checkOutDate }) {
-    setState((prev) => {
-      const room = prev.rooms.find((r) => r.id === roomId)
-      const reservation = {
-        id: Date.now(),
-        roomId,
-        roomNumber: room?.number,
-        guestName: guestName.trim(),
-        checkInDate,
-        checkOutDate,
-        status: RESERVATION_STATUSES.PENDING,
-        checkedIn: false,
-        createdAt: new Date().toISOString(),
-      }
-      return { ...prev, reservations: [reservation, ...prev.reservations] }
-    })
-  }
-
-  function confirmReservation(reservationId) {
-    setState((prev) => ({
-      ...prev,
-      reservations: prev.reservations.map((r) =>
-        r.id === reservationId ? { ...r, status: RESERVATION_STATUSES.CONFIRMED } : r,
-      ),
-    }))
-  }
-
-  function cancelReservation(reservationId) {
-    setState((prev) => ({
-      ...prev,
-      reservations: prev.reservations.map((r) =>
-        r.id === reservationId ? { ...r, status: RESERVATION_STATUSES.CANCELLED } : r,
-      ),
-    }))
-  }
-
-  function markReservationCheckedIn(reservationId) {
-    setState((prev) => ({
-      ...prev,
-      reservations: prev.reservations.map((r) =>
-        r.id === reservationId ? { ...r, checkedIn: true } : r,
-      ),
-    }))
-  }
-
-  function markAsClean(roomId) {
-    setState((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((room) =>
-        room.id === roomId ? { ...room, status: ROOM_STATUSES.CLEAN } : room,
-      ),
-    }))
-  }
-
-  function toggleMaintenance(roomId) {
-    setState((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((room) => {
-        if (room.id !== roomId) return room
-        if (room.status === ROOM_STATUSES.MAINTENANCE) {
-          return { ...room, status: ROOM_STATUSES.CLEAN }
-        }
-        return { ...room, status: ROOM_STATUSES.MAINTENANCE, guest: null, billing: null }
-      }),
-    }))
-  }
-
-  return {
-    rooms: state.rooms,
-    checkInHistory: state.checkInHistory,
-    checkOutHistory: state.checkOutHistory,
-    reservations: state.reservations,
+    reservations,
+    loading,
     checkIn,
     checkOut,
     markAsClean,
@@ -176,5 +135,6 @@ export function useHotelState() {
     confirmReservation,
     cancelReservation,
     markReservationCheckedIn,
+    refresh,
   }
 }

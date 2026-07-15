@@ -44,7 +44,7 @@ export default function ReceptionPage({ rooms, reservations, onCheckIn, onConver
     })
   }
 
-  function handleCheckIn() {
+  async function handleCheckIn() {
     if (!selectedRoom) return
 
     const guest = {
@@ -64,7 +64,9 @@ export default function ReceptionPage({ rooms, reservations, onCheckIn, onConver
       checkOutDate: form.checkOutDate,
     }
 
-    onCheckIn(selectedRoom.id, guest, billing)
+    const success = await onCheckIn(selectedRoom.id, guest, billing)
+    if (!success) return
+
     if (form.reservationId) onConvertReservation(form.reservationId)
     setForm(createEmptyForm())
     setSelectedRoomId(null)
