@@ -12,25 +12,28 @@ export const INITIAL_ROOMS = [
   { id: 4, number: '202', status: ROOM_STATUSES.MAINTENANCE, guest: null, billing: null },
 ]
 
+// Paleta oscura carmesi/vino. Semantica de estado: verde=disponible/exito,
+// ambar=advertencia, rojo=error/ocupado. Mantenimiento usa un tono rose
+// distinto del rojo de "Ocupada" para no confundir ambos estados de alerta.
 export const STATUS_STYLES = {
   [ROOM_STATUSES.CLEAN]: {
-    card: 'border-emerald-200 bg-emerald-50',
-    badge: 'bg-emerald-100 text-emerald-800',
+    card: 'border-emerald-800 bg-emerald-950/30',
+    badge: 'border border-emerald-800 bg-emerald-950 text-emerald-300',
     dot: 'bg-emerald-500',
   },
   [ROOM_STATUSES.DIRTY]: {
-    card: 'border-amber-200 bg-amber-50',
-    badge: 'bg-amber-100 text-amber-800',
+    card: 'border-amber-800 bg-amber-950/30',
+    badge: 'border border-amber-800 bg-amber-950 text-amber-300',
     dot: 'bg-amber-500',
   },
   [ROOM_STATUSES.OCCUPIED]: {
-    card: 'border-indigo-200 bg-indigo-50',
-    badge: 'bg-indigo-100 text-indigo-800',
-    dot: 'bg-indigo-500',
+    card: 'border-red-800 bg-red-950/30',
+    badge: 'border border-red-800 bg-red-950 text-red-300',
+    dot: 'bg-red-500',
   },
   [ROOM_STATUSES.MAINTENANCE]: {
-    card: 'border-rose-200 bg-rose-50',
-    badge: 'bg-rose-100 text-rose-800',
+    card: 'border-rose-800 bg-rose-950/30',
+    badge: 'border border-rose-800 bg-rose-950 text-rose-300',
     dot: 'bg-rose-500',
   },
 }

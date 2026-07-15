@@ -3,15 +3,15 @@ import { RESERVATION_STATUSES, RESERVATION_STATUS_STYLES } from '../../constants
 
 export default function ReservationList({ reservations, onConfirm, onCancel }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
       <div className="mb-6">
-        <h3 className="text-base font-semibold text-slate-900">Reservas Activas</h3>
-        <p className="text-sm text-slate-500">Pendientes, confirmadas y canceladas</p>
+        <h3 className="text-base font-semibold text-zinc-100">Reservas Activas</h3>
+        <p className="text-sm text-zinc-500">Pendientes, confirmadas y canceladas</p>
       </div>
 
       {reservations.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-          <p className="text-sm text-slate-500">Aún no hay reservas registradas</p>
+        <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-950/50 p-8 text-center">
+          <p className="text-sm text-zinc-500">Aún no hay reservas registradas</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -22,15 +22,15 @@ export default function ReservationList({ reservations, onConfirm, onCancel }) {
             return (
               <article
                 key={reservation.id}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4"
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-900">
+                  <span className="text-sm font-semibold text-zinc-100">
                     Hab. {reservation.roomNumber} — {reservation.guestName}
                   </span>
                   <StatusBadge status={reservation.status} styles={RESERVATION_STATUS_STYLES} />
                 </div>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-zinc-500">
                   {reservation.checkInDate} → {reservation.checkOutDate}
                   {reservation.checkedIn && ' · Check-in ya realizado'}
                 </p>
@@ -41,7 +41,7 @@ export default function ReservationList({ reservations, onConfirm, onCancel }) {
                       <button
                         type="button"
                         onClick={() => onConfirm(reservation.id)}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                        className="rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-zinc-900"
                       >
                         Confirmar
                       </button>
@@ -49,7 +49,7 @@ export default function ReservationList({ reservations, onConfirm, onCancel }) {
                     <button
                       type="button"
                       onClick={() => onCancel(reservation.id)}
-                      className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2"
+                      className="rounded-lg bg-red-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-zinc-900"
                     >
                       Cancelar
                     </button>
