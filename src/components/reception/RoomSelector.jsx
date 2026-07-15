@@ -15,10 +15,10 @@ export default function RoomSelector({ rooms, selectedRoomId, onSelectRoom }) {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
+    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
       <div className="mb-6">
-        <h3 className="text-base font-semibold text-zinc-100">Habitaciones</h3>
-        <p className="text-sm text-zinc-500">Solo las habitaciones limpias pueden seleccionarse para check-in</p>
+        <h3 className="text-base font-semibold text-zinc-900">Habitaciones</h3>
+        <p className="text-sm text-zinc-600">Solo las habitaciones limpias pueden seleccionarse para check-in</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -34,20 +34,20 @@ export default function RoomSelector({ rooms, selectedRoomId, onSelectRoom }) {
               aria-disabled={!canSelect}
               onClick={() => handleSelect(room)}
               className={`relative rounded-xl border-2 p-5 text-left transition-all ${styles.card} ${
-                isSelected ? 'ring-2 ring-red-500 ring-offset-2 ring-offset-zinc-950' : ''
-              } ${canSelect ? 'cursor-pointer hover:shadow-md' : 'cursor-not-allowed opacity-60'}`}
+                isSelected ? 'ring-2 ring-red-600 ring-offset-2 ring-offset-white' : ''
+              } ${canSelect ? 'cursor-pointer hover:shadow-md' : 'cursor-not-allowed opacity-70'}`}
             >
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-2xl font-bold text-zinc-100">Hab. {room.number}</span>
+                <span className="text-2xl font-bold text-zinc-900">Hab. {room.number}</span>
                 {isSelected && (
-                  <span className="rounded-full bg-red-800 px-2 py-0.5 text-xs font-medium text-white">
+                  <span className="rounded-full bg-red-700 px-2 py-0.5 text-xs font-medium text-white">
                     Seleccionada
                   </span>
                 )}
               </div>
               <StatusBadge status={room.status} />
               {!canSelect && (
-                <p className="mt-3 text-xs font-medium text-red-400">
+                <p className="mt-3 text-xs font-medium text-red-700">
                   No disponible para check-in
                 </p>
               )}

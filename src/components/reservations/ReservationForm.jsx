@@ -50,10 +50,10 @@ export default function ReservationForm({ rooms, reservations, onAddReservation 
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
+    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
       <div className="mb-6">
-        <h3 className="text-base font-semibold text-zinc-100">Nueva Reserva</h3>
-        <p className="text-sm text-zinc-500">Registro anticipado de huésped y fechas de estadía</p>
+        <h3 className="text-base font-semibold text-zinc-900">Nueva Reserva</h3>
+        <p className="text-sm text-zinc-600">Registro anticipado de huésped y fechas de estadía</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -64,10 +64,10 @@ export default function ReservationForm({ rooms, reservations, onAddReservation 
             value={form.roomId}
             onChange={(e) => handleChange('roomId', e.target.value)}
             onBlur={() => handleBlur('roomId')}
-            className={`w-full rounded-lg border bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 ${
+            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 ${
               showError('roomId')
-                ? 'border-red-600 focus:border-red-500 focus:ring-red-500/30'
-                : 'border-zinc-700 focus:border-red-500 focus:ring-red-500/30'
+                ? 'border-red-600 focus:border-red-600 focus:ring-red-500/30'
+                : 'border-zinc-300 focus:border-red-600 focus:ring-red-500/30'
             }`}
           >
             <option value="">Seleccione una habitación</option>
@@ -77,7 +77,7 @@ export default function ReservationForm({ rooms, reservations, onAddReservation 
               </option>
             ))}
           </select>
-          {showError('roomId') && <p className="mt-1 text-xs text-red-400">{errors.roomId}</p>}
+          {showError('roomId') && <p className="mt-1 text-xs text-red-700">{errors.roomId}</p>}
         </div>
 
         <div>
@@ -88,14 +88,14 @@ export default function ReservationForm({ rooms, reservations, onAddReservation 
             value={form.guestName}
             onChange={(e) => handleChange('guestName', e.target.value)}
             onBlur={() => handleBlur('guestName')}
-            className={`w-full rounded-lg border bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 ${
+            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 ${
               showError('guestName')
-                ? 'border-red-600 focus:border-red-500 focus:ring-red-500/30'
-                : 'border-zinc-700 focus:border-red-500 focus:ring-red-500/30'
+                ? 'border-red-600 focus:border-red-600 focus:ring-red-500/30'
+                : 'border-zinc-300 focus:border-red-600 focus:ring-red-500/30'
             }`}
             placeholder="Ej. María González"
           />
-          {showError('guestName') && <p className="mt-1 text-xs text-red-400">{errors.guestName}</p>}
+          {showError('guestName') && <p className="mt-1 text-xs text-red-700">{errors.guestName}</p>}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -107,13 +107,13 @@ export default function ReservationForm({ rooms, reservations, onAddReservation 
               value={form.checkInDate}
               onChange={(e) => handleChange('checkInDate', e.target.value)}
               onBlur={() => handleBlur('checkInDate')}
-              className={`w-full rounded-lg border bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 ${
                 showError('checkInDate')
-                  ? 'border-red-600 focus:border-red-500 focus:ring-red-500/30'
-                  : 'border-zinc-700 focus:border-red-500 focus:ring-red-500/30'
+                  ? 'border-red-600 focus:border-red-600 focus:ring-red-500/30'
+                  : 'border-zinc-300 focus:border-red-600 focus:ring-red-500/30'
               }`}
             />
-            {showError('checkInDate') && <p className="mt-1 text-xs text-red-400">{errors.checkInDate}</p>}
+            {showError('checkInDate') && <p className="mt-1 text-xs text-red-700">{errors.checkInDate}</p>}
           </div>
           <div>
             <RequiredLabel htmlFor="checkOutDate">Fecha de salida</RequiredLabel>
@@ -123,19 +123,19 @@ export default function ReservationForm({ rooms, reservations, onAddReservation 
               value={form.checkOutDate}
               onChange={(e) => handleChange('checkOutDate', e.target.value)}
               onBlur={() => handleBlur('checkOutDate')}
-              className={`w-full rounded-lg border bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 ${
                 showError('checkOutDate')
-                  ? 'border-red-600 focus:border-red-500 focus:ring-red-500/30'
-                  : 'border-zinc-700 focus:border-red-500 focus:ring-red-500/30'
+                  ? 'border-red-600 focus:border-red-600 focus:ring-red-500/30'
+                  : 'border-zinc-300 focus:border-red-600 focus:ring-red-500/30'
               }`}
             />
-            {showError('checkOutDate') && <p className="mt-1 text-xs text-red-400">{errors.checkOutDate}</p>}
+            {showError('checkOutDate') && <p className="mt-1 text-xs text-red-700">{errors.checkOutDate}</p>}
           </div>
         </div>
 
         <button
           type="submit"
-          className="w-full rounded-xl bg-red-800 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-zinc-900"
+          className="w-full rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white"
         >
           Crear Reserva
         </button>

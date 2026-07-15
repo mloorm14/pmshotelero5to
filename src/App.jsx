@@ -52,13 +52,13 @@ export default function App() {
   return (
     <AppLayout activeModule={activeModule} onNavigate={setActiveModule} stats={stats} role={role} onRoleChange={handleRoleChange}>
       {loading && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-12 text-center shadow-sm">
-          <p className="text-sm text-zinc-500">Cargando datos desde la API…</p>
+        <div className="rounded-2xl border border-zinc-200 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-zinc-600">Cargando datos desde la API…</p>
         </div>
       )}
       {!loading && !canViewActiveModule && (
-        <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900 p-12 text-center shadow-sm">
-          <p className="text-sm text-zinc-500">Este módulo no está disponible para el rol seleccionado.</p>
+        <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-12 text-center shadow-sm">
+          <p className="text-sm text-zinc-600">Este módulo no está disponible para el rol seleccionado.</p>
         </div>
       )}
       {!loading && canViewActiveModule && activeModule === 'reservations' && (

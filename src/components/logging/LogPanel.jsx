@@ -15,7 +15,7 @@ export default function LogPanel() {
   }, [logs, collapsed])
 
   return (
-    <div className="border-t border-red-900/40 bg-black font-mono text-zinc-100">
+    <div className="border-t border-red-900/40 bg-zinc-900 font-mono text-zinc-100">
       <div className="flex items-center justify-between border-b border-red-900/30 px-4 py-2">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />

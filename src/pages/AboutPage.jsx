@@ -60,7 +60,7 @@ const INTEGRATION_CHAINS = [
 
 function Tag({ children }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-mono text-zinc-300">
+    <span className="inline-flex items-center rounded-full border border-zinc-300 bg-zinc-100 px-2 py-0.5 text-xs font-mono text-zinc-700">
       {children}
     </span>
   )
@@ -69,12 +69,12 @@ function Tag({ children }) {
 export default function AboutPage() {
   return (
     <div className="space-y-8">
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
-        <h3 className="mb-2 text-base font-semibold text-zinc-100">Arquitectura</h3>
-        <p className="mb-4 text-sm text-zinc-400">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-2 text-base font-semibold text-zinc-900">Arquitectura</h3>
+        <p className="mb-4 text-sm text-zinc-600">
           React (frontend) se comunica por HTTP con una API REST en Express, que persiste todo en PostgreSQL.
         </p>
-        <pre className="overflow-x-auto rounded-xl border border-zinc-800 bg-black p-4 text-xs leading-relaxed text-zinc-300">
+        <pre className="overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-100 p-4 text-xs leading-relaxed text-zinc-700">
 {`┌──────────────┐        fetch (JSON)        ┌──────────────┐        SQL parametrizado        ┌──────────────┐
 │   React      │  ───────────────────────▶  │  Express API │  ───────────────────────────▶   │  PostgreSQL  │
 │  (Vite, :5173)│  ◀───────────────────────  │   (:3001)    │  ◀───────────────────────────   │   (:5432)    │
@@ -82,15 +82,15 @@ export default function AboutPage() {
         </pre>
       </section>
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
-        <h3 className="mb-1 text-base font-semibold text-zinc-100">Mapa de subsistemas</h3>
-        <p className="mb-4 text-sm text-zinc-400">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-1 text-base font-semibold text-zinc-900">Mapa de subsistemas</h3>
+        <p className="mb-4 text-sm text-zinc-600">
           Dependencias de cada módulo respecto a las tablas de la base de datos, útil para diseñar pruebas de integración.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
+              <tr className="border-b border-zinc-200 text-xs uppercase tracking-wider text-zinc-600">
                 <th className="py-2 pr-4">Módulo</th>
                 <th className="py-2 pr-4">Lee de</th>
                 <th className="py-2 pr-4">Escribe en</th>
@@ -99,8 +99,8 @@ export default function AboutPage() {
             </thead>
             <tbody>
               {MODULES.map((mod) => (
-                <tr key={mod.name} className="border-b border-zinc-800/60 align-top">
-                  <td className="py-3 pr-4 font-semibold text-zinc-100">{mod.name}</td>
+                <tr key={mod.name} className="border-b border-zinc-100 align-top">
+                  <td className="py-3 pr-4 font-semibold text-zinc-900">{mod.name}</td>
                   <td className="py-3 pr-4">
                     <div className="flex flex-wrap gap-1.5">
                       {mod.reads.map((t) => (
@@ -117,7 +117,7 @@ export default function AboutPage() {
                       )}
                     </div>
                   </td>
-                  <td className="py-3 pr-4 text-sm text-zinc-400">{mod.note}</td>
+                  <td className="py-3 pr-4 text-sm text-zinc-600">{mod.note}</td>
                 </tr>
               ))}
             </tbody>
@@ -125,17 +125,17 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
-        <h3 className="mb-1 text-base font-semibold text-zinc-100">Cadenas de prueba de integración sugeridas</h3>
-        <p className="mb-4 text-sm text-zinc-400">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-1 text-base font-semibold text-zinc-900">Cadenas de prueba de integración sugeridas</h3>
+        <p className="mb-4 text-sm text-zinc-600">
           Formato Subsistema/s: A &gt; B &gt; C, como referencia para documentar los casos de prueba de la materia.
         </p>
         <div className="space-y-4">
           {INTEGRATION_CHAINS.map((item) => (
-            <div key={item.title} className="rounded-xl border border-zinc-800 bg-black/40 p-4">
-              <p className="text-sm font-semibold text-zinc-100">{item.title}</p>
-              <p className="mt-1 font-mono text-xs text-red-400">Subsistema/s: {item.chain}</p>
-              <p className="mt-2 text-sm text-zinc-400">{item.description}</p>
+            <div key={item.title} className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+              <p className="text-sm font-semibold text-zinc-900">{item.title}</p>
+              <p className="mt-1 font-mono text-xs text-red-700">Subsistema/s: {item.chain}</p>
+              <p className="mt-2 text-sm text-zinc-600">{item.description}</p>
             </div>
           ))}
         </div>
