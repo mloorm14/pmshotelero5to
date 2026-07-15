@@ -1,21 +1,30 @@
 import { isRoomAvailableForCheckIn } from '../../constants/rooms'
 import RequiredLabel from '../shared/RequiredLabel'
+import { validateRequiredText, validateDocumentId, validatePhone } from '../../utils/validation'
+import { calculateNights, isNightsValid, calculateTotal, isTotalValid } from '../../utils/billing'
+import { validateDateRange } from '../../utils/dates'
 
 export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn }) {
-  const baseRate = parseFloat(form.baseRate) || 0
-  const discount = parseFloat(form.discount) || 0
-  const total = baseRate - discount
+  const baseRate = Number.parseFloat(form.baseRate) || 0
+  const discount = Number.parseFloat(form.discount) || 0
 
-  const isFormValid =
-    form.fullName.trim() !== '' &&
-    form.documentId.trim() !== '' &&
-    form.phone.trim() !== ''
+  const nameValidation = validateRequiredText(form.fullName, 'El nombre')
+  const documentValidation = validateDocumentId(form.documentId)
+  const phoneValidation = validatePhone(form.phone)
+  const dateRangeValidation = validateDateRange(form.checkInDate, form.checkOutDate)
+
+  const nights = calculateNights(form.checkInDate, form.checkOutDate)
+  const nightsValid = isNightsValid(nights)
+  const total = calculateTotal(baseRate, nights, discount)
+  const hasInvalidDiscount = !isTotalValid(total)
 
   const isRoomReady = selectedRoom && isRoomAvailableForCheckIn(selectedRoom.status)
-  const hasInvalidDiscount = total <= 0
-  const canCheckIn = isFormValid && isRoomReady && !hasInvalidDiscount
+  const isFormValid =
+    nameValidation.valid && documentValidation.valid && phoneValidation.valid && dateRangeValidation.valid
+  const canCheckIn = isFormValid && isRoomReady && nightsValid && !hasInvalidDiscount
 
-  const touchedEmpty = (field) => form.touched[field] && form[field].trim() === ''
+  const touchedInvalid = (field, validation) => form.touched[field] && !validation.valid
+  const markTouched = (field) => onChange('touched', { ...form.touched, [field]: true })
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -59,16 +68,16 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
                   type="text"
                   value={form.fullName}
                   onChange={(e) => onChange('fullName', e.target.value)}
-                  onBlur={() => onChange('touched', { ...form.touched, fullName: true })}
+                  onBlur={() => markTouched('fullName')}
                   className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                    touchedEmpty('fullName')
+                    touchedInvalid('fullName', nameValidation)
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
                       : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-200'
                   }`}
                   placeholder="Ej. María González"
                 />
-                {touchedEmpty('fullName') && (
-                  <p className="mt-1 text-xs text-rose-600">Este campo es obligatorio</p>
+                {touchedInvalid('fullName', nameValidation) && (
+                  <p className="mt-1 text-xs text-rose-600">{nameValidation.error}</p>
                 )}
               </div>
 
@@ -79,16 +88,16 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
                   type="text"
                   value={form.documentId}
                   onChange={(e) => onChange('documentId', e.target.value)}
-                  onBlur={() => onChange('touched', { ...form.touched, documentId: true })}
+                  onBlur={() => markTouched('documentId')}
                   className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                    touchedEmpty('documentId')
+                    touchedInvalid('documentId', documentValidation)
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
                       : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-200'
                   }`}
                   placeholder="Ej. 1234567890"
                 />
-                {touchedEmpty('documentId') && (
-                  <p className="mt-1 text-xs text-rose-600">Este campo es obligatorio</p>
+                {touchedInvalid('documentId', documentValidation) && (
+                  <p className="mt-1 text-xs text-rose-600">{documentValidation.error}</p>
                 )}
               </div>
 
@@ -99,18 +108,63 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
                   type="tel"
                   value={form.phone}
                   onChange={(e) => onChange('phone', e.target.value)}
-                  onBlur={() => onChange('touched', { ...form.touched, phone: true })}
+                  onBlur={() => markTouched('phone')}
                   className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                    touchedEmpty('phone')
+                    touchedInvalid('phone', phoneValidation)
                       ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
                       : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-200'
                   }`}
                   placeholder="Ej. 0991234567"
                 />
-                {touchedEmpty('phone') && (
-                  <p className="mt-1 text-xs text-rose-600">Este campo es obligatorio</p>
+                {touchedInvalid('phone', phoneValidation) && (
+                  <p className="mt-1 text-xs text-rose-600">{phoneValidation.error}</p>
                 )}
               </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+              <h4 className="mb-4 text-sm font-semibold text-slate-800">Estadía</h4>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="checkInDate" className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Fecha de entrada
+                  </label>
+                  <input
+                    id="checkInDate"
+                    type="date"
+                    value={form.checkInDate}
+                    onChange={(e) => onChange('checkInDate', e.target.value)}
+                    onBlur={() => markTouched('checkInDate')}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="checkOutDate" className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Fecha de salida estimada
+                  </label>
+                  <input
+                    id="checkOutDate"
+                    type="date"
+                    value={form.checkOutDate}
+                    onChange={(e) => onChange('checkOutDate', e.target.value)}
+                    onBlur={() => markTouched('checkOutDate')}
+                    className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                      form.touched.checkOutDate && !dateRangeValidation.valid
+                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
+                        : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-200'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Noches</span>
+                  <div className="flex h-[42px] items-center rounded-lg border border-slate-200 bg-white px-3 text-lg font-bold text-slate-800">
+                    {nights}
+                  </div>
+                </div>
+              </div>
+              {form.touched.checkOutDate && !dateRangeValidation.valid && (
+                <p className="mt-2 text-xs text-rose-600">{dateRangeValidation.error}</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
@@ -118,7 +172,7 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                   <label htmlFor="baseRate" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Tarifa Base ($)
+                    Tarifa Base por Noche ($)
                   </label>
                   <input
                     id="baseRate"
@@ -173,7 +227,7 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
                   <div>
                     <p className="font-semibold">Alerta financiera</p>
                     <p className="mt-0.5">
-                      El descuento supera la tarifa base. El total (${total.toFixed(2)}) debe ser mayor a cero.
+                      El descuento supera la tarifa. El total (${total.toFixed(2)}) debe ser mayor a cero.
                     </p>
                   </div>
                 </div>

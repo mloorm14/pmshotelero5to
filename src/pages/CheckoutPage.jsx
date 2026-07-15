@@ -40,6 +40,15 @@ export default function CheckoutPage({ rooms, onCheckOut }) {
                     <dt className="text-slate-500">Teléfono</dt>
                     <dd className="text-slate-800">{room.guest.phone}</dd>
                   </div>
+                  {room.billing?.checkInDate && (
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Estadía</dt>
+                      <dd className="text-slate-800">
+                        {room.billing.checkInDate} → {room.billing.checkOutDate} ({room.billing.nights} noche
+                        {room.billing.nights === 1 ? '' : 's'})
+                      </dd>
+                    </div>
+                  )}
                   {room.billing && (
                     <div className="flex justify-between border-t border-slate-100 pt-2">
                       <dt className="text-slate-500">Total cobrado</dt>
