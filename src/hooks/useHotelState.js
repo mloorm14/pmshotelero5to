@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { INITIAL_ROOMS, ROOM_STATUSES } from '../constants/rooms'
+import { RESERVATION_STATUSES } from '../constants/reservations'
 import { loadState, saveState } from '../utils/storage'
 
 function createInitialState() {
@@ -7,6 +8,7 @@ function createInitialState() {
     rooms: INITIAL_ROOMS,
     checkInHistory: [],
     checkOutHistory: [],
+    reservations: [],
   }
 }
 
@@ -28,6 +30,7 @@ function normalizeState(saved) {
     rooms,
     checkInHistory: saved.checkInHistory ?? [],
     checkOutHistory: saved.checkOutHistory ?? [],
+    reservations: saved.reservations ?? [],
   }
 }
 
@@ -93,6 +96,51 @@ export function useHotelState() {
     })
   }
 
+  function addReservation({ roomId, guestName, checkInDate, checkOutDate }) {
+    setState((prev) => {
+      const room = prev.rooms.find((r) => r.id === roomId)
+      const reservation = {
+        id: Date.now(),
+        roomId,
+        roomNumber: room?.number,
+        guestName: guestName.trim(),
+        checkInDate,
+        checkOutDate,
+        status: RESERVATION_STATUSES.PENDING,
+        checkedIn: false,
+        createdAt: new Date().toISOString(),
+      }
+      return { ...prev, reservations: [reservation, ...prev.reservations] }
+    })
+  }
+
+  function confirmReservation(reservationId) {
+    setState((prev) => ({
+      ...prev,
+      reservations: prev.reservations.map((r) =>
+        r.id === reservationId ? { ...r, status: RESERVATION_STATUSES.CONFIRMED } : r,
+      ),
+    }))
+  }
+
+  function cancelReservation(reservationId) {
+    setState((prev) => ({
+      ...prev,
+      reservations: prev.reservations.map((r) =>
+        r.id === reservationId ? { ...r, status: RESERVATION_STATUSES.CANCELLED } : r,
+      ),
+    }))
+  }
+
+  function markReservationCheckedIn(reservationId) {
+    setState((prev) => ({
+      ...prev,
+      reservations: prev.reservations.map((r) =>
+        r.id === reservationId ? { ...r, checkedIn: true } : r,
+      ),
+    }))
+  }
+
   function markAsClean(roomId) {
     setState((prev) => ({
       ...prev,
@@ -119,9 +167,14 @@ export function useHotelState() {
     rooms: state.rooms,
     checkInHistory: state.checkInHistory,
     checkOutHistory: state.checkOutHistory,
+    reservations: state.reservations,
     checkIn,
     checkOut,
     markAsClean,
     toggleMaintenance,
+    addReservation,
+    confirmReservation,
+    cancelReservation,
+    markReservationCheckedIn,
   }
 }
