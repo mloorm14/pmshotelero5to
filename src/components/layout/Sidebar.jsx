@@ -1,10 +1,17 @@
+import { ROLES } from '../../constants/roles'
+import { canAccessModule } from '../../utils/roles'
+
 const NAV_ITEMS = [
+  { id: 'reservations', label: 'Reservas', description: 'Gestión de reservas', icon: '📅' },
   { id: 'reception', label: 'Recepción', description: 'Check-in', icon: '🛎️' },
   { id: 'checkout', label: 'Caja y Salidas', description: 'Check-out', icon: '💳' },
   { id: 'housekeeping', label: 'Ama de Llaves', description: 'Estado de habitaciones', icon: '🧹' },
+  { id: 'reports', label: 'Reportes', description: 'Auditoría y facturación', icon: '📊' },
 ]
 
-export default function Sidebar({ activeModule, onNavigate, stats }) {
+export default function Sidebar({ activeModule, onNavigate, stats, role, onRoleChange }) {
+  const visibleItems = NAV_ITEMS.filter((item) => canAccessModule(role, item.id))
+
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-900 text-white">
       <div className="border-b border-slate-700 px-5 py-6">
@@ -19,8 +26,23 @@ export default function Sidebar({ activeModule, onNavigate, stats }) {
         </div>
       </div>
 
+      <div className="border-b border-slate-700 px-5 py-4">
+        <label htmlFor="role" className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-500">
+          Rol actual
+        </label>
+        <select
+          id="role"
+          value={role}
+          onChange={(e) => onRoleChange(e.target.value)}
+          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <option value={ROLES.RECEPTIONIST}>{ROLES.RECEPTIONIST}</option>
+          <option value={ROLES.ADMIN}>{ROLES.ADMIN}</option>
+        </select>
+      </div>
+
       <nav className="flex-1 space-y-1 p-3">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = activeModule === item.id
           return (
             <button
