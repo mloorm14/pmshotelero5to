@@ -9,4 +9,5 @@ export const MODULE_ACCESS = {
   checkout: [ROLES.RECEPTIONIST, ROLES.ADMIN],
   housekeeping: [ROLES.ADMIN],
   reports: [ROLES.ADMIN],
+  about: [ROLES.RECEPTIONIST, ROLES.ADMIN],
 }
