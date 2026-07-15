@@ -22,26 +22,56 @@ Todas las reglas de negocio siguen implementadas como **funciones puras** (sin d
 
 ## Instalación y ejecución
 
-### 1. Backend (PostgreSQL + Express)
+### Requisitos previos
+
+- **Git**
+- **Node.js 20.19 o superior** (recomendado 22+) con **npm** — `node --version`
+- **Docker Desktop instalado y abierto/corriendo** (no basta con tenerlo instalado: el ícono debe mostrar que el motor de Docker está activo antes del siguiente paso)
+
+Se necesitan **dos terminales abiertas en paralelo**: una para el backend y otra para el frontend. Ambas quedan corriendo con `npm run dev` (el proceso no termina solo); no cierres ninguna de las dos mientras usas la app.
+
+### 0. Clonar el repositorio
+
+```bash
+git clone https://github.com/mloorm14/pmshotelero5to.git
+cd pmshotelero5to
+```
+
+Todo lo que sigue se ejecuta a partir de esta carpeta (`pmshotelero5to/`).
+
+### 1. Backend — Terminal 1 (PostgreSQL + Express)
 
 ```bash
 cd server
 docker compose up -d   # levanta solo PostgreSQL en Docker
 npm install
 npm run migrate         # crea las tablas (schema.sql) y siembra datos (seed.sql)
-npm run dev              # API en http://localhost:3001
+npm run dev              # API en http://localhost:3001, queda escuchando
 ```
 
-Detalle completo de endpoints y variables de entorno en [`server/README-BACKEND.md`](server/README-BACKEND.md).
+Deja esta terminal abierta. Detalle completo de endpoints y variables de entorno en [`server/README-BACKEND.md`](server/README-BACKEND.md).
 
-### 2. Frontend (Vite)
+**Si `docker compose up -d` falla porque el puerto 5432 ya está en uso** (por ejemplo, otro proyecto con Postgres corriendo), diagnostica con:
 
-En otra terminal, desde la raíz del proyecto:
+```bash
+docker ps
+```
+
+y revisa qué contenedor tiene publicado el puerto `5432` (columna `PORTS`).
+
+### 2. Frontend — Terminal 2 (Vite)
+
+Abre una **segunda terminal** (sin cerrar la del backend) y, desde la raíz del proyecto (`pmshotelero5to/`, **no** dentro de `server/`):
 
 ```bash
 npm install
 cp .env.example .env    # opcional: por defecto ya apunta a http://localhost:3001/api
-npm run dev              # app en http://localhost:5173
+npm run dev              # app en http://localhost:5173, queda escuchando
+```
+
+Con ambas terminales corriendo, abre **http://localhost:5173** en el navegador.
+
+```bash
 npm run build            # build de producción
 npm run lint              # oxlint
 ```
