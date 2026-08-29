@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch index.js",
     "start": "node index.js",
-    "migrate": "node migrate.js"
+    "migrate": "node migrate.js",
+    "repair:orphan-reservations": "node scripts/repair-orphan-reservation.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

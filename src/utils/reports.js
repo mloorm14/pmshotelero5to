@@ -15,3 +15,13 @@ export function calculateTotalBilled(entries) {
     .filter((entry) => entry.type === 'Check-in')
     .reduce((sum, entry) => sum + (Number(entry.total) || 0), 0)
 }
+
+// Suma aparte de calculateTotalBilled a propósito: son saldos que un huésped
+// se llevó sin pagar en un checkout forzado ('Pendiente de cobro' — ver
+// PAYMENT_TYPES.UNCOLLECTED_BALANCE), no dinero efectivamente cobrado. Si se
+// sumaran al total facturado, Reportes mostraría ingresos que nunca entraron.
+export function calculateTotalPending(entries) {
+  return entries
+    .filter((entry) => entry.type === 'Pendiente de cobro')
+    .reduce((sum, entry) => sum + (Number(entry.total) || 0), 0)
+}

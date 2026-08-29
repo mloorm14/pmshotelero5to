@@ -12,9 +12,10 @@ export const INITIAL_ROOMS = [
   { id: 4, number: '202', status: ROOM_STATUSES.MAINTENANCE, guest: null, billing: null },
 ]
 
-// Paleta clara con acento carmesi/vino. Semantica de estado: verde=disponible/
-// exito, ambar=advertencia, rojo=error/ocupado. Mantenimiento usa un tono rose
-// distinto del rojo de "Ocupada" para no confundir ambos estados de alerta.
+// Paleta clara con acento carmesi/vino (escala `wine` definida en index.css).
+// Semantica de estado: verde=disponible/exito, ambar=advertencia,
+// vino=ocupado (coincide con el acento de marca), rose=mantenimiento,
+// distinto del vino de "Ocupada" para no confundir ambos estados de alerta.
 export const STATUS_STYLES = {
   [ROOM_STATUSES.CLEAN]: {
     card: 'border-emerald-300 bg-emerald-50',
@@ -27,9 +28,9 @@ export const STATUS_STYLES = {
     dot: 'bg-amber-500',
   },
   [ROOM_STATUSES.OCCUPIED]: {
-    card: 'border-red-300 bg-red-50',
-    badge: 'border border-red-200 bg-red-100 text-red-800',
-    dot: 'bg-red-500',
+    card: 'border-wine-300 bg-wine-50',
+    badge: 'border border-wine-200 bg-wine-100 text-wine-800',
+    dot: 'bg-wine-500',
   },
   [ROOM_STATUSES.MAINTENANCE]: {
     card: 'border-rose-300 bg-rose-50',

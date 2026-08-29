@@ -1,5 +1,56 @@
 @import "tailwindcss";
 
+/*
+ * Sistema de diseño del PMS Hotelero.
+ * Paleta "carmesí/vino" con proposito (acento de marca + estado "Ocupada"),
+ * escala neutra "ink" con temperatura calida (reemplaza el gris zinc por
+ * defecto de Tailwind) y una escala de radios unica para toda la app:
+ * rounded-md controles pequenos (botones, inputs, chips), rounded-lg
+ * contenedores (tarjetas, paneles, secciones), rounded-full solo para
+ * pildoras/badges/puntos de estado.
+ */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", "Georgia", serif;
+
+  --color-wine-50: #fbf1f1;
+  --color-wine-100: #f6dfe0;
+  --color-wine-200: #eebfc0;
+  --color-wine-300: #e0959a;
+  --color-wine-400: #cc6870;
+  --color-wine-500: #ac414a;
+  --color-wine-600: #8a2831;
+  --color-wine-700: #6e1e26;
+  --color-wine-800: #54171d;
+  --color-wine-900: #3a1014;
+  --color-wine-950: #21090b;
+
+  --color-ink-50: #f7f5f4;
+  --color-ink-100: #ece8e6;
+  --color-ink-200: #d8d1cd;
+  --color-ink-300: #b7ada7;
+  --color-ink-400: #8f8279;
+  --color-ink-500: #6d6259;
+  --color-ink-600: #524a43;
+  --color-ink-700: #3d3733;
+  --color-ink-800: #29241f;
+  --color-ink-900: #1a1613;
+  --color-ink-950: #100d0b;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased;
+  @apply bg-ink-50 text-ink-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
 }

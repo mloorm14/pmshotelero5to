@@ -30,7 +30,9 @@ function toQueryString(params = {}) {
 
 export const api = {
   getRooms: () => request('/rooms'),
+  addRoom: (payload) => request('/rooms', { method: 'POST', body: JSON.stringify(payload) }),
   updateRoom: (id, patch) => request(`/rooms/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+  deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
 
   getReservations: () => request('/reservations'),
   addReservation: (payload) => request('/reservations', { method: 'POST', body: JSON.stringify(payload) }),
@@ -40,4 +42,7 @@ export const api = {
   checkOut: (payload) => request('/checkout', { method: 'POST', body: JSON.stringify(payload) }),
 
   getHistory: (filters) => request(`/history${toQueryString(filters)}`),
+
+  getPayments: (roomId) => request(`/payments${toQueryString({ roomId })}`),
+  addPayment: (payload) => request('/payments', { method: 'POST', body: JSON.stringify(payload) }),
 }

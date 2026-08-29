@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../utils/api'
-import { useLog } from '../context/LogContext'
-import { filterHistory, calculateTotalBilled } from '../utils/reports'
+import { useLog } from '../context/useLog'
+import { filterHistory, calculateTotalBilled, calculateTotalPending } from '../utils/reports'
+
+const ENTRY_TYPE_BADGE = {
+  'Check-in': 'border-emerald-200 bg-emerald-100 text-emerald-800',
+  'Check-out': 'border-amber-200 bg-amber-100 text-amber-800',
+  'Pendiente de cobro': 'border-wine-200 bg-wine-100 text-wine-800',
+}
 
 export default function ReportsPage({ rooms }) {
   const { addLog } = useLog()
@@ -27,6 +33,7 @@ export default function ReportsPage({ rooms }) {
 
   const filteredEntries = useMemo(() => filterHistory(entries, filters), [entries, filters])
   const totalBilled = useMemo(() => calculateTotalBilled(filteredEntries), [filteredEntries])
+  const totalPending = useMemo(() => calculateTotalPending(filteredEntries), [filteredEntries])
 
   function handleFilterChange(field, value) {
     setFilters((prev) => ({ ...prev, [field]: value }))
@@ -34,21 +41,21 @@ export default function ReportsPage({ rooms }) {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-ink-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-zinc-900">Filtros</h3>
+          <h3 className="text-base font-semibold text-ink-900">Filtros</h3>
           <button
             type="button"
             onClick={loadHistory}
             disabled={loading}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:border-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border border-ink-300 px-3 py-1.5 text-xs font-semibold text-ink-700 transition-colors hover:border-wine-600 hover:text-wine-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? 'Actualizando…' : 'Refrescar desde la base de datos'}
           </button>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label htmlFor="startDate" className="mb-1.5 block text-sm font-medium text-zinc-700">
+            <label htmlFor="startDate" className="mb-1.5 block text-sm font-medium text-ink-700">
               Desde
             </label>
             <input
@@ -56,11 +63,11 @@ export default function ReportsPage({ rooms }) {
               type="date"
               value={filters.startDate}
               onChange={(e) => handleFilterChange('startDate', e.target.value)}
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              className="w-full rounded-md border border-ink-300 bg-white px-3 py-2.5 text-sm text-ink-900 focus:border-wine-600 focus:outline-none focus:ring-2 focus:ring-wine-500/30"
             />
           </div>
           <div>
-            <label htmlFor="endDate" className="mb-1.5 block text-sm font-medium text-zinc-700">
+            <label htmlFor="endDate" className="mb-1.5 block text-sm font-medium text-ink-700">
               Hasta
             </label>
             <input
@@ -68,18 +75,18 @@ export default function ReportsPage({ rooms }) {
               type="date"
               value={filters.endDate}
               onChange={(e) => handleFilterChange('endDate', e.target.value)}
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              className="w-full rounded-md border border-ink-300 bg-white px-3 py-2.5 text-sm text-ink-900 focus:border-wine-600 focus:outline-none focus:ring-2 focus:ring-wine-500/30"
             />
           </div>
           <div>
-            <label htmlFor="roomNumber" className="mb-1.5 block text-sm font-medium text-zinc-700">
+            <label htmlFor="roomNumber" className="mb-1.5 block text-sm font-medium text-ink-700">
               Habitación
             </label>
             <select
               id="roomNumber"
               value={filters.roomNumber}
               onChange={(e) => handleFilterChange('roomNumber', e.target.value)}
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              className="w-full rounded-md border border-ink-300 bg-white px-3 py-2.5 text-sm text-ink-900 focus:border-wine-600 focus:outline-none focus:ring-2 focus:ring-wine-500/30"
             >
               <option value="">Todas</option>
               {rooms.map((room) => (
@@ -92,49 +99,58 @@ export default function ReportsPage({ rooms }) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
-        <p className="text-sm font-medium text-red-800">Total facturado en el rango filtrado</p>
-        <p className="mt-1 text-3xl font-bold text-red-800">${totalBilled.toFixed(2)}</p>
-      </section>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section className="rounded-lg border border-wine-200 bg-wine-50 p-6 shadow-sm">
+          <p className="text-sm font-medium text-wine-800">Total facturado en el rango filtrado</p>
+          <p className="mt-1 text-3xl font-bold text-wine-800">${totalBilled.toFixed(2)}</p>
+        </section>
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <p className="text-sm font-medium text-amber-800">Pendiente de cobro (checkouts forzados)</p>
+          <p className="mt-1 text-3xl font-bold text-amber-800">${totalPending.toFixed(2)}</p>
+          <p className="mt-1 text-xs text-amber-700/80">
+            No incluido en el total facturado — huéspedes que se retiraron sin saldar (ver "Motivo" en la tabla).
+          </p>
+        </section>
+      </div>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-base font-semibold text-zinc-900">Historial de Check-in / Check-out</h3>
+      <section className="rounded-lg border border-ink-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-base font-semibold text-ink-900">Historial de Check-in / Check-out</h3>
         {filteredEntries.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-8 text-center">
-            <p className="text-sm text-zinc-600">No hay movimientos para los filtros seleccionados</p>
+          <div className="rounded-lg border border-dashed border-ink-300 bg-ink-50 p-8 text-center">
+            <p className="text-sm text-ink-500">No hay movimientos para los filtros seleccionados</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-zinc-200 text-xs uppercase tracking-wider text-zinc-600">
+                <tr className="border-b border-ink-200 text-xs uppercase tracking-wider text-ink-500">
                   <th className="py-2 pr-4">Fecha</th>
                   <th className="py-2 pr-4">Tipo</th>
                   <th className="py-2 pr-4">Habitación</th>
                   <th className="py-2 pr-4">Huésped</th>
+                  <th className="py-2 pr-4">Documento</th>
                   <th className="py-2 pr-4">Total</th>
+                  <th className="py-2 pr-4">Motivo</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEntries.map((entry) => (
-                  <tr key={`${entry.type}-${entry.id}`} className="border-b border-zinc-100">
-                    <td className="py-2.5 pr-4 text-zinc-600">{new Date(entry.at).toLocaleString()}</td>
+                  <tr key={`${entry.type}-${entry.id}`} className="border-b border-ink-100">
+                    <td className="py-2.5 pr-4 text-ink-500">{new Date(entry.at).toLocaleString()}</td>
                     <td className="py-2.5 pr-4">
                       <span
-                        className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                          entry.type === 'Check-in'
-                            ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
-                            : 'border-amber-200 bg-amber-100 text-amber-800'
-                        }`}
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ENTRY_TYPE_BADGE[entry.type] ?? 'border-ink-200 bg-ink-100 text-ink-700'}`}
                       >
                         {entry.type}
                       </span>
                     </td>
-                    <td className="py-2.5 pr-4 font-medium text-zinc-800">{entry.roomNumber}</td>
-                    <td className="py-2.5 pr-4 text-zinc-700">{entry.guestName ?? '—'}</td>
-                    <td className="py-2.5 pr-4 font-semibold text-red-700">
+                    <td className="py-2.5 pr-4 font-medium text-ink-800">{entry.roomNumber}</td>
+                    <td className="py-2.5 pr-4 text-ink-700">{entry.guestName ?? '—'}</td>
+                    <td className="py-2.5 pr-4 text-ink-700">{entry.guestDocument ?? '—'}</td>
+                    <td className="py-2.5 pr-4 font-semibold text-wine-700">
                       {entry.total !== null ? `$${Number(entry.total).toFixed(2)}` : '—'}
                     </td>
+                    <td className="py-2.5 pr-4 text-ink-500">{entry.note ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

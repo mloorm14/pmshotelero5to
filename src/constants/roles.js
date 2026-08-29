@@ -8,6 +8,8 @@ export const MODULE_ACCESS = {
   reception: [ROLES.RECEPTIONIST, ROLES.ADMIN],
   checkout: [ROLES.RECEPTIONIST, ROLES.ADMIN],
   housekeeping: [ROLES.ADMIN],
+  rooms: [ROLES.ADMIN],
+  availability: [ROLES.RECEPTIONIST, ROLES.ADMIN],
   reports: [ROLES.ADMIN],
   about: [ROLES.RECEPTIONIST, ROLES.ADMIN],
 }
