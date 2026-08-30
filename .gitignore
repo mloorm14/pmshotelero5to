@@ -19,6 +19,10 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
+# Entregables de la actividad de V&V (viven en el Drive del curso, no en el repo)
+pms hotelero ultima tarea.docx
+pms hotelero ultima tarea.ORIGINAL-BACKUP.docx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
