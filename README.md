@@ -89,7 +89,7 @@ La visibilidad de módulos sigue dependiendo solo del **rol** (no del usuario pu
 | Rol | Módulos visibles |
 |---|---|
 | Recepcionista | Reservas, Recepción (Check-in), Caja (Check-out), Disponibilidad, Acerca del sistema |
-| Administrador | Todo lo anterior + Ama de Llaves (Housekeeping) + Habitaciones (CRUD) + Reportes + **Usuarios** |
+| Administrador | Todo lo anterior + Ama de Llaves (Housekeeping) + Habitaciones (CRUD) + Reportes + **Usuarios** + **Minibar** |
 
 Disponibilidad es de solo lectura (no modifica ningún dato), por eso también está habilitada para Recepcionista: es la vista natural para decidir en qué habitación ofrecer una reserva. Habitaciones (CRUD) y Usuarios sí cambian catálogos (habitaciones / cuentas), por eso quedan restringidos a Administrador.
 
@@ -98,6 +98,16 @@ Disponibilidad es de solo lectura (no modifica ningún dato), por eso también e
 `src/pages/UsersPage.jsx` (+ `UserForm.jsx`/`UserList.jsx` en `src/components/users/`): alta de usuarios (nombre, usuario, rol) y edición (nombre, rol, activo/inactivo) — el `username` no se puede editar una vez creado, para no romper la trazabilidad de quién hizo qué si alguien le cambia el nombre de usuario. **No existe eliminar usuarios a propósito**: `created_by`/`performed_by`/`registered_by` (ver siguiente sección) quedarían apuntando a un id inexistente; dar de baja a alguien es desactivarlo (`active = false`), que además lo saca del selector de login sin borrar su historial.
 
 Como no hay sesión de servidor, `POST`/`PUT /api/users` no pueden saber por sí solos si quien llama es Administrador — el frontend manda `actingRole: session.role` en el body y el backend responde 403 si no es `'Administrador'`. Es deliberadamente simple (no es seguridad real, es solo consistencia con que el login tampoco lo es) y está comentado así en `server/index.js` para que quede claro que es una limitación conocida, no un descuido.
+
+## Minibar / extras (cargo, no pago)
+
+Consumo de minibar (agua, gaseosas, snacks, etc.) que se le cobra al huésped además del total de la estadía. Se registra **solo al momento del checkout** — `MinibarPanel.jsx` (`src/components/checkout/`) aparece dentro de cada tarjeta de habitación ocupada en `CheckoutPage.jsx`, **antes** del bloque de saldo: primero se registra qué consumió, luego se ve el saldo actualizado con eso incluido. No hay pantalla para cargar minibar a mitad de la estadía.
+
+Es lo opuesto de un pago: un anticipo/cobro reduce el saldo pendiente, un cargo de minibar lo aumenta. Por eso `POST /api/checkout` y `POST /api/payments` calculan el saldo sobre `effectiveTotal = room.total + suma de minibar_charges de la estadía activa`, no solo sobre `room.total` — si no se sumara, el checkout podría cerrarse (o un "Cobro final" podría procesarse de menos) sin cobrar lo que el huésped consumió. `unit_price`/`product_name` quedan desnormalizados en cada cargo (igual que `room_number` en las tablas de historial): si el catálogo cambia de precio o se desactiva un producto después, los cargos ya registrados no cambian retroactivamente.
+
+`src/pages/MinibarPage.jsx` (+ `MinibarForm.jsx`/`MinibarList.jsx` en `src/components/minibar/`) es el CRUD del catálogo (solo Administrador, mismo patrón y mismas restricciones que Usuarios): alta (nombre, precio) y edición (nombre, precio, activo/inactivo). **No existe eliminar productos a propósito**: rompería la referencia desde `minibar_charges` en cargos ya históricos (aunque `product_id` sea `ON DELETE SET NULL`, `product_name` desnormalizado sobrevive de todas formas); dar de baja es desactivar (`active: false`), que además lo saca del selector de Checkout sin borrar el historial de lo ya cargado.
+
+En Reportes, el minibar de estadías ya cerradas se muestra como una cifra aparte ("Ingresos por minibar", `calculateMinibarRevenue`) sin mezclarse con el total facturado principal — ver la nota de `calculateTotalBilled` más abajo, la misma razón (no duplicar/ocultar cifras) aplicó a esta decisión.
 
 ## Trazabilidad (quién hizo qué)
 
@@ -144,6 +154,8 @@ Barra inferior, colapsable, tipo terminal (`src/components/logging/LogPanel.jsx`
 | **Caja (Check-out)** | Recepcionista, Administrador | `reservations` | `reservations` | Al procesar el check-out, si la habitación tiene una reserva "En curso" vinculada, esa reserva pasa a "Finalizada" en la misma transacción | `POST /api/checkout` en `server/index.js` |
 | **Caja (Check-out)** | Recepcionista, Administrador | `payments` | `payments` | Checkout forzado (walk-out): exige un motivo de texto y registra el saldo positivo pendiente como `payments.type = 'Saldo pendiente por cobrar'`; no cuenta como ingreso cobrado | `PAYMENT_TYPES.UNCOLLECTED_BALANCE` en `src/utils/payments.js`, `POST /api/checkout` en `server/index.js` |
 | **Caja (Check-out)** | Recepcionista, Administrador | `rooms` | `rooms` | Bloqueo optimista: si la `version` enviada no coincide con `rooms.version` bajo `FOR UPDATE`, responde 409 sin aplicar cambios ("modificada por otro usuario") en vez de sobrescribir en silencio — ver "Bloqueo optimista" | `POST /api/checkout` en `server/index.js` |
+| **Caja (Minibar/extras)** | Recepcionista, Administrador | `rooms`, `minibar_products` | `minibar_charges` | Se registra solo al checkout, no a mitad de la estadía; es un **cargo**, no un pago — aumenta el saldo a liquidar en vez de reducirlo. 409 si la habitación no está "Ocupada", si el producto está desactivado (aunque el id sea válido) o no existe estadía activa | `MinibarPanel.jsx` (`src/components/checkout/`), `POST /api/minibar/charges` en `server/index.js` |
+| **Caja (Minibar/extras)** | Recepcionista, Administrador | `minibar_charges` | — | El saldo de la estadía (checkout y validación de "Cobro final") se calcula sobre `total + consumo de minibar`, no solo el `total` de la habitación | `sumMinibarCharges(charges)` en `src/utils/payments.js`; `effectiveTotal` en `POST /api/checkout`/`POST /api/payments` de `server/index.js` |
 | **Ama de Llaves** | Administrador | `rooms` | `rooms` | Solo habitaciones "Sucia" pueden marcarse como limpias | Lógica de estado en `src/pages/HousekeepingPage.jsx` sobre `ROOM_STATUSES` |
 | **Ama de Llaves** | Administrador | `rooms` | `rooms` | Una habitación puede enviarse/retirarse de mantenimiento, limpiando huésped/facturación al entrar | `toggleMaintenance(roomId)` en `src/hooks/useHotelState.js` |
 | **Pagos (anticipo/devolución/cobro final)** | Recepcionista, Administrador | `rooms`, `check_in_history`, `payments` | `payments` | Un anticipo no puede exceder el total de la estadía; una devolución no puede exceder el neto de anticipos registrados; un cobro final no puede exceder el saldo pendiente. `'Saldo pendiente por cobrar'` no es un tipo aceptado por esta validación — solo lo inserta el checkout forzado, directamente | `validatePayment({ type, amount, total, existingPayments })` en `src/utils/payments.js` |
@@ -157,13 +169,18 @@ Barra inferior, colapsable, tipo terminal (`src/components/logging/LogPanel.jsx`
 | **Reportes / Auditoría** | Administrador | `check_in_history`, `check_out_history` | — | Filtra el historial combinado por rango de fechas y/o número de habitación | `filterHistory(entries, { startDate, endDate, roomNumber })` en `src/utils/reports.js` |
 | **Reportes / Auditoría** | Administrador | `check_in_history`, `check_out_history` | — | Calcula el total facturado en el rango filtrado (solo cuenta cada estadía una vez, contando check-ins) | `calculateTotalBilled(entries)` en `src/utils/reports.js` |
 | **Reportes / Auditoría** | Administrador | `payments` (vía `GET /api/history`) | — | Calcula, por separado, el monto total de saldos pendientes de checkouts forzados en el rango filtrado — no se suma al total facturado | `calculateTotalPending(entries)` en `src/utils/reports.js` |
+| **Reportes / Auditoría** | Administrador | `minibar_charges` (vía `GET /api/history`) | — | Calcula, por separado, los ingresos por minibar de estadías ya cerradas (checkout realizado) en el rango filtrado — no se suma al total facturado principal | `calculateMinibarRevenue(entries)` en `src/utils/reports.js` |
 | **Usuarios (CRUD)** | Administrador | `users` | `users` | Nombre y usuario no vacíos; rol debe ser Recepcionista o Administrador; `username` único (409→400 con mensaje claro, no 500); `username` no editable una vez creado | `POST`/`PUT /api/users` en `server/index.js` |
 | **Usuarios (CRUD)** | Administrador | — | — | Solo un Administrador puede crear/editar usuarios — el frontend manda `actingRole: session.role`, la API responde 403 si no es Administrador (login simulado, no hay sesión de servidor) | `requireAdmin` en `server/index.js` |
+| **Minibar (CRUD de catálogo)** | Administrador | `minibar_products` | `minibar_products` | Nombre no vacío y único (409→400 con mensaje claro, no 500); precio mayor a cero; no existe eliminar productos a propósito — desactivar es `{ active: false }` | `POST`/`PUT /api/minibar/products` en `server/index.js` |
+| **Minibar (CRUD de catálogo)** | Administrador | — | — | Solo un Administrador puede crear/editar productos — mismo mecanismo que Usuarios (`actingRole: session.role`, 403 si no coincide) | `requireAdmin(req, res, 'productos de minibar')` en `server/index.js` |
 | **Login simulado / Selector de Usuario** | — | `users` | — | Determina qué módulos son accesibles según el rol del usuario elegido; la sesión se revalida contra usuarios activos al montar la app | `canAccessModule(role, moduleId)`, `getAccessibleModules(role)` en `src/utils/roles.js`; revalidación en `src/App.jsx` |
 
-El backend combina `check_in_history`, `check_out_history` y los pagos `'Saldo pendiente por cobrar'` de `payments` (unidos a `check_in_history` para exponer el documento del huésped) en `GET /api/history` (ver `server/index.js`); el frontend aplica `filterHistory`/`calculateTotalBilled`/`calculateTotalPending` sobre el resultado.
+El backend combina `check_in_history`, `check_out_history` y los pagos `'Saldo pendiente por cobrar'` de `payments` (unidos a `check_in_history` para exponer el documento del huésped) en `GET /api/history` (ver `server/index.js`); el frontend aplica `filterHistory`/`calculateTotalBilled`/`calculateTotalPending`/`calculateMinibarRevenue` sobre el resultado.
 
 **`calculateTotalBilled` no toca la tabla `payments` y eso es intencional, no un descuido**: cuenta el total facturado de una estadía **una sola vez**, leyendo `check_in_history.total` (el total ya calculado en el check-in con `calculateTotal`). Los anticipos, devoluciones y cobros finales registrados en `payments` son la forma en que ese mismo total se cobró (en uno o varios movimientos) — no ingresos adicionales. Si `GET /api/history` o `calculateTotalBilled` sumaran además los montos de `payments`, una estadía de $45 pagada como anticipo de $25 + cobro final de $20 se contaría como $45 (check-in) + $45 (payments) = $90 facturados, el doble de lo real. Por eso Reportes solo lee `check_in_history`/`check_out_history` para el total facturado, y `payments` queda fuera de su alcance por diseño **salvo** para el tipo `'Saldo pendiente por cobrar'`, que `calculateTotalPending` suma en una cifra completamente separada — sigue sin tocar `calculateTotalBilled`, así que no hay riesgo de duplicar el mismo total facturado dos veces: son dos cifras con significado distinto (cobrado vs. pendiente de cobrar) que nunca se mezclan en la misma suma.
+
+**Por qué `calculateTotalBilled` sigue leyendo `'Check-in'` y no `'Check-out'` después de agregar minibar**: `check_out_history.total` sí quedó ajustado para incluir el minibar (`effectiveTotal`, ver "Minibar / extras" arriba), así que en teoría filtrar por `'Check-out'` daría un total facturado "más correcto" (con minibar incluido). Se evaluó ese cambio y se descartó: `calculateTotalBilled` alimenta el panel principal de Reportes, que hoy funciona como una proyección de ingresos de las estadías activas, no solo una auditoría de lo ya cerrado — con `'Check-in'`, una estadía recién ingresada ya cuenta como facturada de inmediato. Cambiar el filtro a `'Check-out'` haría que esa misma estadía dejara de contar hasta el día en que se libere la habitación, lo cual es una regresión de comportamiento que nadie pidió al agregar minibar. En su lugar, el minibar de estadías ya cerradas se muestra como una cifra aparte (`calculateMinibarRevenue`, filtra por `'Check-out'` y suma `minibarTotal`) — visible en Reportes sin mezclarse con el total facturado principal.
 
 ## Utilidades de fecha compartidas
 
@@ -277,6 +294,8 @@ Formato `Subsistema/s: A > B > C`, tal como pide la materia. Todos verificables 
 | 30 | Sesión revalidada al desactivar un usuario | Usuarios > Selector de Usuario | Con un usuario logueado, un Administrador lo desactiva (`active: false`) desde otra sesión/pestaña → al refrescar la app del usuario desactivado, la sesión se limpia y vuelve a la pantalla de selección de usuario |
 | 31 | Bloqueo optimista en checkout — conflicto de versión | Caja > API | Capturar la `version` de una habitación Ocupada → un primer `POST /api/checkout` con esa `version` tiene éxito → un segundo intento con la misma `version` (ya vieja) responde 409 con el mensaje de "modificada por otro usuario" |
 | 32 | Bloqueo optimista detecta pagos concurrentes | Pagos > Caja > API | Registrar un anticipo (esto avanza `rooms.version`) → intentar un checkout con la `version` capturada *antes* de ese anticipo → responde 409, no se procesa el checkout con datos desactualizados |
+| 33 | Consumo de minibar aumenta el saldo a cobrar | Caja (Minibar) > Pagos > Caja | Check-in sin anticipo (saldo $0 pendiente = total) → cargar 2-3 productos de minibar en `MinibarPanel` → el saldo mostrado sube exactamente en el subtotal de esos cargos → "Procesar Check-out" sigue bloqueado hasta cobrar el saldo con minibar incluido |
+| 34 | Producto de minibar desactivado no puede cargarse | Minibar > Caja > API | Un Administrador desactiva un producto (`active: false`) mientras una habitación está Ocupada → `POST /api/minibar/charges` con ese `productId` responde 409, aunque el id siga siendo válido y el selector ya estuviera abierto con ese producto |
 
 ## Heurísticas de Nielsen aplicadas
 
@@ -321,6 +340,8 @@ src/
     reservations/     ReservationForm, ReservationList (reservas activas + historial colapsado)
     rooms/              RoomForm, RoomList (alta/edición/baja de habitaciones)
     users/               UserForm, UserList (alta/edición/baja lógica de usuarios — solo Administrador)
+    minibar/            MinibarForm, MinibarList (alta/edición/baja lógica de productos — solo Administrador)
+    checkout/           MinibarPanel (cargo de minibar/extras a la estadía activa, dentro de CheckoutPage)
     layout/           AppLayout, Sidebar (usuario actual + navegación, ya no selector de rol suelto)
     shared/           StatusBadge, RequiredLabel, InlineMessage (feedback visible en pantalla)
     logging/            LogPanel (colapsado por defecto)
@@ -328,18 +349,18 @@ src/
     LogContext.jsx    Provider de logs en memoria; useLog.js expone el hook por separado (Fast Refresh)
   pages/              ReservationsPage, ReceptionPage, CheckoutPage,
                       HousekeepingPage, RoomsPage, AvailabilityPage,
-                      ReportsPage, UsersPage, AboutPage
+                      ReportsPage, UsersPage, MinibarPage, AboutPage
   hooks/
-    useHotelState.js       Estado central (rooms, reservations, users) respaldado por la API + logging de cada acción
+    useHotelState.js       Estado central (rooms, reservations, users, minibarProducts) respaldado por la API + logging de cada acción
     useTransientMessage.js Mensaje de éxito/error autoocultable para InlineMessage (heurística 1)
   utils/
     validation.js     Validaciones de formato de campos
     billing.js        Cálculo de noches y tarifas
     reservations.js   Validación de fechas/solapamiento de reservas y formato opcional de documento/teléfono
     rooms.js          Validación del CRUD de habitaciones (número/capacidad/tarifa) — no confundir con `constants/rooms.js`
-    payments.js        Reglas de anticipo/devolución/cobro final/saldo pendiente y saldo con signo (positivo=cobrar, negativo=devolver)
+    payments.js        Reglas de anticipo/devolución/cobro final/saldo pendiente, saldo con signo (positivo=cobrar, negativo=devolver) y suma de cargos de minibar (`sumMinibarCharges`)
     alerts.js           Clasificación de alertas de check-out (vencido/hoy/próximo/normal)
-    reports.js        Filtrado y totalización del historial de auditoría (`calculateTotalBilled`, `calculateTotalPending`)
+    reports.js        Filtrado y totalización del historial de auditoría (`calculateTotalBilled`, `calculateTotalPending`, `calculateMinibarRevenue`)
     roles.js          Control de acceso por rol
     dates.js          Utilidades de fecha compartidas
     storage.js        Persistencia de la sesión de login simulado en localStorage (`loadSession`/`saveSession`)
@@ -352,4 +373,4 @@ src/
 
 ## Pendiente para la siguiente sesión
 
-**Automatizar con Playwright** (no está instalado en el proyecto todavía) los escenarios verificados manualmente/vía API en esta ronda — usuarios, trazabilidad y bloqueo optimista — y los 10 casos de prueba de integración mínimos que pide la materia. Los casos #27-32 de la tabla de arriba son los candidatos más directos para el primer set de specs E2E.
+**Automatizar con Playwright** (no está instalado en el proyecto todavía) los escenarios verificados manualmente/vía API en esta ronda — usuarios, trazabilidad, bloqueo optimista y minibar/extras — y los 10 casos de prueba de integración mínimos que pide la materia. Los casos #27-34 de la tabla de arriba son los candidatos más directos para el primer set de specs E2E.

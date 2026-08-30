@@ -10,10 +10,29 @@ export function filterHistory(entries, { startDate, endDate, roomNumber } = {}) 
   })
 }
 
+// Filtra por 'Check-in' a propósito, no por 'Check-out' (decisión tomada al
+// agregar minibar, que sí quedó reflejado en check_out_history.total): con
+// 'Check-out' una estadía en curso (checked-in pero sin checkout todavío)
+// dejaría de contar como facturada hasta cerrarse, y este número alimenta el
+// panel principal de Reportes, que hoy funciona como proyección de ingresos
+// en curso, no solo auditoría de lo ya cerrado. Cambiar el filtro sería una
+// regresión de comportamiento no pedida por este cambio — el minibar de
+// estadías cerradas se muestra aparte en calculateMinibarRevenue.
 export function calculateTotalBilled(entries) {
   return entries
     .filter((entry) => entry.type === 'Check-in')
     .reduce((sum, entry) => sum + (Number(entry.total) || 0), 0)
+}
+
+// Suma aparte de calculateTotalBilled (no mezclada en el total principal):
+// minibarTotal solo viene poblado en entradas 'Check-out' (ver
+// GET /api/history), así que esto solo cuenta minibar de estadías ya
+// cerradas — no hay forma de saber cuánto minibar lleva una estadía en
+// curso sin consultar /api/minibar/charges habitación por habitación.
+export function calculateMinibarRevenue(entries) {
+  return entries
+    .filter((entry) => entry.type === 'Check-out')
+    .reduce((sum, entry) => sum + (Number(entry.minibarTotal) || 0), 0)
 }
 
 // Suma aparte de calculateTotalBilled a propósito: son saldos que un huésped

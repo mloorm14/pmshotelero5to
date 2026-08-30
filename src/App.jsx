@@ -9,6 +9,7 @@ import RoomsPage from './pages/RoomsPage'
 import AvailabilityPage from './pages/AvailabilityPage'
 import ReportsPage from './pages/ReportsPage'
 import UsersPage from './pages/UsersPage'
+import MinibarPage from './pages/MinibarPage'
 import AboutPage from './pages/AboutPage'
 import { useHotelState } from './hooks/useHotelState'
 import { ROOM_STATUSES } from './constants/rooms'
@@ -23,6 +24,7 @@ export default function App() {
     rooms,
     reservations,
     users,
+    minibarProducts,
     loading,
     checkIn,
     checkOut,
@@ -38,6 +40,9 @@ export default function App() {
     addPayment,
     addUser,
     updateUser,
+    addMinibarProduct,
+    updateMinibarProduct,
+    addMinibarCharge,
   } = useHotelState()
 
   // Revalida la sesión guardada contra la lista real de usuarios activos al
@@ -107,6 +112,18 @@ export default function App() {
     return updateUser(userId, { ...patch, actingRole: session.role })
   }
 
+  function handleAddMinibarProduct(payload) {
+    return addMinibarProduct({ ...payload, actingRole: session.role })
+  }
+
+  function handleUpdateMinibarProduct(productId, patch) {
+    return updateMinibarProduct(productId, { ...patch, actingRole: session.role })
+  }
+
+  function handleAddMinibarCharge(payload) {
+    return addMinibarCharge({ ...payload, userId: session.userId })
+  }
+
   const stats = {
     clean: rooms.filter((r) => r.status === ROOM_STATUSES.CLEAN).length,
     occupied: rooms.filter((r) => r.status === ROOM_STATUSES.OCCUPIED).length,
@@ -155,7 +172,12 @@ export default function App() {
         />
       )}
       {!loading && canViewActiveModule && activeModule === 'checkout' && (
-        <CheckoutPage rooms={rooms} onCheckOut={handleCheckOut} onAddPayment={handleAddPayment} />
+        <CheckoutPage
+          rooms={rooms}
+          onCheckOut={handleCheckOut}
+          onAddPayment={handleAddPayment}
+          onAddMinibarCharge={handleAddMinibarCharge}
+        />
       )}
       {!loading && canViewActiveModule && activeModule === 'housekeeping' && (
         <HousekeepingPage
@@ -179,6 +201,13 @@ export default function App() {
       {!loading && canViewActiveModule && activeModule === 'reports' && <ReportsPage rooms={rooms} />}
       {!loading && canViewActiveModule && activeModule === 'users' && (
         <UsersPage users={users} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} />
+      )}
+      {!loading && canViewActiveModule && activeModule === 'minibar' && (
+        <MinibarPage
+          products={minibarProducts}
+          onAddProduct={handleAddMinibarProduct}
+          onUpdateProduct={handleUpdateMinibarProduct}
+        />
       )}
       {!loading && canViewActiveModule && activeModule === 'about' && <AboutPage />}
     </AppLayout>

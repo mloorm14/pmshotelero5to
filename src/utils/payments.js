@@ -83,3 +83,11 @@ export function validatePayment({ type, amount, total, existingPayments = [] }) 
 export function calculateBalanceDue(total, payments = []) {
   return Number(total) - calculateNetAdvances(payments) - sumFinalPayments(payments)
 }
+
+// Consumo de minibar/extras de una estadía: es un CARGO, no un pago —
+// aumenta el monto a saldar en vez de reducirlo. Quien llama a
+// calculateBalanceDue debe sumar esto al total antes de pasarlo (ver
+// CheckoutPage.jsx), calculateBalanceDue en sí no cambia de firma.
+export function sumMinibarCharges(charges = []) {
+  return charges.reduce((sum, charge) => sum + Number(charge.subtotal), 0)
+}

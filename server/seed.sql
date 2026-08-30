@@ -15,3 +15,14 @@ INSERT INTO users (id, full_name, username, role, active) VALUES
   (2, 'Luis Cedeño', 'luis.recepcion', 'Recepcionista', true);
 
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
+
+-- Catálogo inicial de minibar/extras.
+INSERT INTO minibar_products (id, name, price, active) VALUES
+  (1, 'Agua embotellada', 1.50, true),
+  (2, 'Gaseosa', 2.00, true),
+  (3, 'Cerveza nacional', 3.50, true),
+  (4, 'Vino (copa)', 8.00, true),
+  (5, 'Snack salado', 2.50, true),
+  (6, 'Chocolate', 3.00, true);
+
+SELECT setval('minibar_products_id_seq', (SELECT MAX(id) FROM minibar_products));

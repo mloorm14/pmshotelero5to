@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../utils/api'
 import { useLog } from '../context/useLog'
-import { filterHistory, calculateTotalBilled, calculateTotalPending } from '../utils/reports'
+import { filterHistory, calculateTotalBilled, calculateTotalPending, calculateMinibarRevenue } from '../utils/reports'
 
 const ENTRY_TYPE_BADGE = {
   'Check-in': 'border-emerald-200 bg-emerald-100 text-emerald-800',
@@ -34,6 +34,7 @@ export default function ReportsPage({ rooms }) {
   const filteredEntries = useMemo(() => filterHistory(entries, filters), [entries, filters])
   const totalBilled = useMemo(() => calculateTotalBilled(filteredEntries), [filteredEntries])
   const totalPending = useMemo(() => calculateTotalPending(filteredEntries), [filteredEntries])
+  const minibarRevenue = useMemo(() => calculateMinibarRevenue(filteredEntries), [filteredEntries])
 
   function handleFilterChange(field, value) {
     setFilters((prev) => ({ ...prev, [field]: value }))
@@ -99,10 +100,17 @@ export default function ReportsPage({ rooms }) {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <section className="rounded-lg border border-wine-200 bg-wine-50 p-6 shadow-sm">
           <p className="text-sm font-medium text-wine-800">Total facturado en el rango filtrado</p>
           <p className="mt-1 text-3xl font-bold text-wine-800">${totalBilled.toFixed(2)}</p>
+        </section>
+        <section className="rounded-lg border border-ink-200 bg-ink-50 p-6 shadow-sm">
+          <p className="text-sm font-medium text-ink-700">Ingresos por minibar</p>
+          <p className="mt-1 text-3xl font-bold text-ink-800">${minibarRevenue.toFixed(2)}</p>
+          <p className="mt-1 text-xs text-ink-500">
+            No incluido en el total facturado de arriba — solo estadías ya cerradas (checkout realizado).
+          </p>
         </section>
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <p className="text-sm font-medium text-amber-800">Pendiente de cobro (checkouts forzados)</p>

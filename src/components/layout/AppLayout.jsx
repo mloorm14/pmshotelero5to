@@ -10,6 +10,7 @@ const TITLES = {
   availability: 'Disponibilidad — Calendario por habitación',
   reports: 'Reportes y Auditoría',
   users: 'Usuarios',
+  minibar: 'Minibar — Catálogo de productos',
   about: 'Acerca del sistema',
 }
 

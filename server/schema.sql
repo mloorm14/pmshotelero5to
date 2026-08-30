@@ -1,6 +1,8 @@
 -- Esquema relacional del PMS Hotelero.
 -- Re-ejecutable: elimina las tablas si ya existen antes de recrearlas.
 
+DROP TABLE IF EXISTS minibar_charges CASCADE;
+DROP TABLE IF EXISTS minibar_products CASCADE;
 DROP TABLE IF EXISTS payments CASCADE;
 DROP TABLE IF EXISTS check_out_history CASCADE;
 DROP TABLE IF EXISTS check_in_history CASCADE;
@@ -96,12 +98,19 @@ CREATE TABLE check_in_history (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- stay_id ancla el checkout a la fila de check_in_history que cerró, igual
+-- que payments.stay_id — lo usa GET /api/history para poder sumar el
+-- consumo de minibar (minibar_charges.stay_id) de esa estadía específica en
+-- Reportes, sin tener que adivinar cuál fue la estadía activa a partir de
+-- room_id + fecha. Nullable porque las estadías cerradas antes de esta
+-- funcionalidad no tienen ese dato.
 CREATE TABLE check_out_history (
   id              SERIAL PRIMARY KEY,
   room_id         INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
   room_number     VARCHAR(10) NOT NULL,
   guest_name      VARCHAR(200),
   total           NUMERIC(10, 2),
+  stay_id         INTEGER REFERENCES check_in_history(id),
   performed_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -130,6 +139,41 @@ CREATE TABLE payments (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Catálogo de productos de minibar/extras (agua, gaseosas, snacks, etc.).
+CREATE TABLE minibar_products (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL UNIQUE,
+  price       NUMERIC(10, 2) NOT NULL CHECK (price > 0),
+  active      BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Cargo de un producto de minibar consumido durante una estadía. Es lo
+-- opuesto de payments: un pago reduce el saldo pendiente, un cargo de
+-- minibar lo aumenta (ver calculateBalanceDue en src/utils/payments.js y
+-- POST /api/checkout en server/index.js, que suma minibar_charges antes de
+-- calcular el saldo). stay_id ancla el cargo a check_in_history igual que
+-- payments (una habitación puede tener muchas estadías a lo largo del
+-- tiempo, no se debe mezclar el consumo de una estadía con otra).
+-- product_name y unit_price son copias del producto AL MOMENTO del cargo
+-- (no una referencia viva): si el precio o el nombre del catálogo cambian
+-- después, los cargos ya registrados no deben cambiar retroactivamente —
+-- mismo criterio que ya se aplica en check_in_history/check_out_history al
+-- guardar datos desnormalizados que no deben depender de una fila que puede
+-- cambiar o desaparecer.
+CREATE TABLE minibar_charges (
+  id              SERIAL PRIMARY KEY,
+  stay_id         INTEGER NOT NULL REFERENCES check_in_history(id),
+  room_id         INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
+  product_id      INTEGER REFERENCES minibar_products(id) ON DELETE SET NULL,
+  product_name    VARCHAR(100) NOT NULL,
+  unit_price      NUMERIC(10, 2) NOT NULL,
+  quantity        INTEGER NOT NULL CHECK (quantity > 0),
+  subtotal        NUMERIC(10, 2) NOT NULL,
+  registered_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX idx_reservations_room_id ON reservations(room_id);
 CREATE INDEX idx_checkin_history_room_id ON check_in_history(room_id);
 CREATE INDEX idx_checkout_history_room_id ON check_out_history(room_id);
@@ -137,3 +181,6 @@ CREATE INDEX idx_checkin_history_created_at ON check_in_history(created_at);
 CREATE INDEX idx_checkout_history_created_at ON check_out_history(created_at);
 CREATE INDEX idx_payments_room_id ON payments(room_id);
 CREATE INDEX idx_payments_stay_id ON payments(stay_id);
+CREATE INDEX idx_minibar_charges_stay_id ON minibar_charges(stay_id);
+CREATE INDEX idx_minibar_charges_room_id ON minibar_charges(room_id);
+CREATE INDEX idx_minibar_products_active ON minibar_products(active);

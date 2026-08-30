@@ -12,5 +12,6 @@ export const MODULE_ACCESS = {
   availability: [ROLES.RECEPTIONIST, ROLES.ADMIN],
   reports: [ROLES.ADMIN],
   users: [ROLES.ADMIN],
+  minibar: [ROLES.ADMIN],
   about: [ROLES.RECEPTIONIST, ROLES.ADMIN],
 }

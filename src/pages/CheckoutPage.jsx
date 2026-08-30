@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { ROOM_STATUSES } from '../constants/rooms'
 import StatusBadge from '../components/shared/StatusBadge'
 import InlineMessage from '../components/shared/InlineMessage'
+import MinibarPanel from '../components/checkout/MinibarPanel'
 import { calculateNights } from '../utils/billing'
-import { calculateNetAdvances, calculateBalanceDue, PAYMENT_TYPES } from '../utils/payments'
+import { calculateNetAdvances, calculateBalanceDue, sumMinibarCharges, PAYMENT_TYPES } from '../utils/payments'
 import { classifyRoomsByCheckout, CHECKOUT_ALERT_LEVELS } from '../utils/alerts'
 import { useTransientMessage } from '../hooks/useTransientMessage'
 import { api } from '../utils/api'
@@ -175,11 +176,13 @@ function ForcedCheckoutAction({ room, balance, onForceCheckOut }) {
   )
 }
 
-export default function CheckoutPage({ rooms, onCheckOut, onAddPayment }) {
+export default function CheckoutPage({ rooms, onCheckOut, onAddPayment, onAddMinibarCharge }) {
   const { addLog } = useLog()
   const [message, showMessage] = useTransientMessage()
   const occupiedRooms = rooms.filter((r) => r.status === ROOM_STATUSES.OCCUPIED)
   const [paymentsByRoom, setPaymentsByRoom] = useState({})
+  const [minibarChargesByRoom, setMinibarChargesByRoom] = useState({})
+  const [minibarProducts, setMinibarProducts] = useState([])
 
   const loadPayments = useCallback(
     async (roomId) => {
@@ -193,10 +196,35 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment }) {
     [addLog],
   )
 
+  const loadMinibarCharges = useCallback(
+    async (roomId) => {
+      try {
+        const charges = await api.getMinibarCharges(roomId)
+        setMinibarChargesByRoom((prev) => ({ ...prev, [roomId]: charges }))
+      } catch (err) {
+        addLog(`Error al cargar el consumo de minibar de la habitación: ${err.message}`, 'error')
+      }
+    },
+    [addLog],
+  )
+
   const occupiedRoomIds = occupiedRooms.map((r) => r.id).join(',')
   useEffect(() => {
-    occupiedRoomIds.split(',').filter(Boolean).forEach((id) => loadPayments(Number(id)))
-  }, [occupiedRoomIds, loadPayments])
+    occupiedRoomIds
+      .split(',')
+      .filter(Boolean)
+      .forEach((id) => {
+        loadPayments(Number(id))
+        loadMinibarCharges(Number(id))
+      })
+  }, [occupiedRoomIds, loadPayments, loadMinibarCharges])
+
+  useEffect(() => {
+    api
+      .getMinibarProducts(true)
+      .then(setMinibarProducts)
+      .catch((err) => addLog(`Error al cargar el catálogo de minibar: ${err.message}`, 'error'))
+  }, [addLog])
 
   async function handleSettle(roomId, type, amount, method) {
     const room = rooms.find((r) => r.id === roomId)
@@ -209,6 +237,17 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment }) {
     showMessage(
       `${type === PAYMENT_TYPES.FINAL_PAYMENT ? 'Cobro' : 'Devolución'} de $${amount.toFixed(2)} registrado — habitación ${room?.number ?? roomId}.`,
     )
+  }
+
+  async function handleAddMinibarCharge(roomId, productId, quantity) {
+    const room = rooms.find((r) => r.id === roomId)
+    const result = await onAddMinibarCharge({ roomId, productId, quantity })
+    if (!result.ok) {
+      showMessage(`No se pudo registrar el consumo de minibar: ${result.error}`, 'error')
+      return
+    }
+    await loadMinibarCharges(roomId)
+    showMessage(`Consumo de minibar registrado — habitación ${room?.number ?? roomId}.`)
   }
 
   async function handleCheckOut(roomId) {
@@ -254,8 +293,10 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment }) {
               ? calculateNights(room.billing.checkInDate, room.billing.checkOutDate)
               : null
             const payments = paymentsByRoom[room.id] ?? []
+            const minibarCharges = minibarChargesByRoom[room.id] ?? []
+            const minibarTotal = sumMinibarCharges(minibarCharges)
             const netAdvances = calculateNetAdvances(payments)
-            const balance = room.billing ? calculateBalanceDue(room.billing.total, payments) : null
+            const balance = room.billing ? calculateBalanceDue(room.billing.total + minibarTotal, payments) : null
 
             return (
               <article
@@ -290,27 +331,47 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment }) {
                         </dd>
                       </div>
                     )}
-                    {room.billing && (
-                      <>
-                        <div className="flex justify-between border-t border-ink-200 pt-2">
-                          <dt className="text-ink-500">Total de la estadía</dt>
-                          <dd className="font-medium text-ink-800">${room.billing.total.toFixed(2)}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-ink-500">Anticipos registrados</dt>
-                          <dd className="text-emerald-700">− ${netAdvances.toFixed(2)}</dd>
-                        </div>
-                        <div className="flex justify-between border-t border-ink-200 pt-2">
-                          <dt className="text-ink-500">Saldo</dt>
-                          <dd className={`text-lg font-bold ${balance < 0 ? 'text-emerald-700' : 'text-wine-700'}`}>
-                            {balance < 0 ? '−' : ''}${Math.abs(balance).toFixed(2)}
-                            <span className="ml-1 text-xs font-normal text-ink-500">
-                              {balance > 0 ? 'por cobrar' : balance < 0 ? 'por devolver' : 'saldado'}
-                            </span>
-                          </dd>
-                        </div>
-                      </>
+                  </dl>
+                )}
+
+                {/* Antes del bloque de saldo a propósito: primero se
+                    registra qué consumió el huésped, luego se ve el saldo
+                    actualizado con eso incluido (el minibar es un cargo, no
+                    un pago — sube el saldo en vez de bajarlo). */}
+                {room.billing && (
+                  <MinibarPanel
+                    room={room}
+                    charges={minibarCharges}
+                    products={minibarProducts}
+                    onAddCharge={(productId, quantity) => handleAddMinibarCharge(room.id, productId, quantity)}
+                  />
+                )}
+
+                {room.billing && (
+                  <dl className="mb-3 space-y-2 text-sm">
+                    <div className="flex justify-between border-t border-ink-200 pt-2">
+                      <dt className="text-ink-500">Total de la estadía</dt>
+                      <dd className="font-medium text-ink-800">${room.billing.total.toFixed(2)}</dd>
+                    </div>
+                    {minibarTotal > 0 && (
+                      <div className="flex justify-between">
+                        <dt className="text-ink-500">Consumo de minibar</dt>
+                        <dd className="text-wine-700">+ ${minibarTotal.toFixed(2)}</dd>
+                      </div>
                     )}
+                    <div className="flex justify-between">
+                      <dt className="text-ink-500">Anticipos registrados</dt>
+                      <dd className="text-emerald-700">− ${netAdvances.toFixed(2)}</dd>
+                    </div>
+                    <div className="flex justify-between border-t border-ink-200 pt-2">
+                      <dt className="text-ink-500">Saldo</dt>
+                      <dd className={`text-lg font-bold ${balance < 0 ? 'text-emerald-700' : 'text-wine-700'}`}>
+                        {balance < 0 ? '−' : ''}${Math.abs(balance).toFixed(2)}
+                        <span className="ml-1 text-xs font-normal text-ink-500">
+                          {balance > 0 ? 'por cobrar' : balance < 0 ? 'por devolver' : 'saldado'}
+                        </span>
+                      </dd>
+                    </div>
                   </dl>
                 )}
 

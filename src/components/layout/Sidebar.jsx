@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { id: 'availability', label: 'Disponibilidad', description: 'Calendario por habitación', icon: 'icon-availability' },
   { id: 'reports', label: 'Reportes', description: 'Auditoría y facturación', icon: 'icon-reports' },
   { id: 'users', label: 'Usuarios', description: 'Alta y roles de usuario', icon: 'icon-users' },
+  { id: 'minibar', label: 'Minibar', description: 'Catálogo de productos y precios', icon: 'icon-cash' },
   { id: 'about', label: 'Acerca del sistema', description: 'Mapa de subsistemas', icon: 'icon-about' },
 ]
 

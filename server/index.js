@@ -86,6 +86,10 @@ function mapHistoryEntry(row) {
     total: row.total !== null ? Number(row.total) : null,
     note: row.note,
     performedByName: row.performed_by_name ?? null,
+    // Solo viene poblado en entradas 'Check-out' (ver GET /api/history) —
+    // cuánto de ese total corresponde a minibar, para que Reportes pueda
+    // mostrarlo como línea aparte sin recalcularlo del lado del cliente.
+    minibarTotal: row.minibar_total !== null && row.minibar_total !== undefined ? Number(row.minibar_total) : null,
     at: row.created_at,
   }
 }
@@ -97,6 +101,32 @@ function mapUser(row) {
     username: row.username,
     role: row.role,
     active: row.active,
+    createdAt: row.created_at,
+  }
+}
+
+function mapMinibarProduct(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    price: Number(row.price),
+    active: row.active,
+    createdAt: row.created_at,
+  }
+}
+
+function mapMinibarCharge(row) {
+  return {
+    id: row.id,
+    stayId: row.stay_id,
+    roomId: row.room_id,
+    productId: row.product_id,
+    productName: row.product_name,
+    unitPrice: Number(row.unit_price),
+    quantity: Number(row.quantity),
+    subtotal: Number(row.subtotal),
+    registeredBy: row.registered_by ?? null,
+    registeredByName: row.registered_by_name ?? null,
     createdAt: row.created_at,
   }
 }
@@ -480,7 +510,19 @@ app.post('/api/checkout', async (req, res, next) => {
       type: row.type,
       amount: Number(row.amount),
     }))
-    const balance = calculateBalanceDue(room.total, existingPayments)
+
+    // El minibar es un cargo, no un pago: aumenta el monto a saldar en vez
+    // de reducirlo. effectiveTotal (no room.total) es la base real del
+    // saldo desde aquí en adelante — si no se sumara, el checkout podría
+    // cerrarse sin cobrar lo que el huésped consumió.
+    const minibarResult = stayId
+      ? await client.query('SELECT COALESCE(SUM(subtotal), 0) AS total FROM minibar_charges WHERE stay_id = $1', [
+          stayId,
+        ])
+      : { rows: [{ total: 0 }] }
+    const minibarTotal = Number(minibarResult.rows[0].total)
+    const effectiveTotal = Number(room.total) + minibarTotal
+    const balance = calculateBalanceDue(effectiveTotal, existingPayments)
 
     if (balance !== 0) {
       if (!forced) {
@@ -502,10 +544,14 @@ app.post('/api/checkout', async (req, res, next) => {
       }
     }
 
+    // total guarda effectiveTotal (no room.total): el historial debe
+    // reflejar lo que realmente se cobró, minibar incluido. stay_id queda
+    // registrado para que GET /api/history pueda sumar minibar_charges de
+    // esta estadía específica sin adivinar cuál fue.
     await client.query(
-      `INSERT INTO check_out_history (room_id, room_number, guest_name, total, performed_by)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [roomId, room.number, room.guest_name, room.total, userId ?? null],
+      `INSERT INTO check_out_history (room_id, room_number, guest_name, total, stay_id, performed_by)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [roomId, room.number, room.guest_name, effectiveTotal, stayId, userId ?? null],
     )
 
     // Si esta estadía vino de una reserva (marcada 'En curso' al hacer
@@ -623,7 +669,17 @@ app.post('/api/payments', async (req, res, next) => {
       amount: Number(row.amount),
     }))
 
-    const validation = validatePayment({ type, amount, total: room.total, existingPayments })
+    // Mismo effectiveTotal que POST /api/checkout: un 'Cobro final' no debe
+    // poder exceder el saldo pendiente real, que incluye el minibar ya
+    // cargado a esta estadía.
+    const minibarResult = await client.query(
+      'SELECT COALESCE(SUM(subtotal), 0) AS total FROM minibar_charges WHERE stay_id = $1',
+      [stayId],
+    )
+    const minibarTotal = Number(minibarResult.rows[0].total)
+    const effectiveTotal = Number(room.total) + minibarTotal
+
+    const validation = validatePayment({ type, amount, total: effectiveTotal, existingPayments })
     if (!validation.valid) {
       await client.query('ROLLBACK')
       return res.status(409).json({ error: validation.error })
@@ -686,25 +742,28 @@ app.get('/api/history', async (req, res, next) => {
     // Y en `users` — referenciarlas sin calificar rompería con "column
     // reference is ambiguous" apenas se agrega el LEFT JOIN a users).
     const { rows } = await pool.query(
-      `SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, type FROM (
+      `SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, minibar_total, type FROM (
          SELECT cih.id, cih.room_id, cih.room_number, cih.guest_name, cih.guest_document, cih.nights, cih.total,
-                cih.created_at, NULL::text AS note, u.full_name AS performed_by_name, 'Check-in' AS type
+                cih.created_at, NULL::text AS note, u.full_name AS performed_by_name, NULL::numeric AS minibar_total,
+                'Check-in' AS type
            FROM check_in_history cih
            LEFT JOIN users u ON u.id = cih.performed_by
        ) checkin_entries ${where}
        UNION ALL
-       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, type FROM (
+       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, minibar_total, type FROM (
          SELECT coh.id, coh.room_id, coh.room_number, coh.guest_name, NULL::varchar AS guest_document,
                 NULL::integer AS nights, coh.total, coh.created_at, NULL::text AS note,
-                u.full_name AS performed_by_name, 'Check-out' AS type
+                u.full_name AS performed_by_name,
+                (SELECT COALESCE(SUM(mc.subtotal), 0) FROM minibar_charges mc WHERE mc.stay_id = coh.stay_id) AS minibar_total,
+                'Check-out' AS type
            FROM check_out_history coh
            LEFT JOIN users u ON u.id = coh.performed_by
        ) checkout_entries ${where}
        UNION ALL
-       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, type FROM (
+       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, minibar_total, type FROM (
          SELECT p.id, p.room_id, cih.room_number, cih.guest_name, cih.guest_document,
                 NULL::integer AS nights, p.amount AS total, p.created_at, p.note,
-                u.full_name AS performed_by_name, 'Pendiente de cobro' AS type
+                u.full_name AS performed_by_name, NULL::numeric AS minibar_total, 'Pendiente de cobro' AS type
            FROM payments p
            JOIN check_in_history cih ON cih.id = p.stay_id
            LEFT JOIN users u ON u.id = p.registered_by
@@ -732,9 +791,9 @@ const USER_ROLES = ['Recepcionista', 'Administrador']
 // quien está "logueado" ahí. Es deliberadamente simple — no es seguridad
 // real, es solo consistencia con que el login tampoco lo es — y es una
 // limitación conocida, no un descuido.
-function requireAdmin(req, res) {
+function requireAdmin(req, res, resource = 'usuarios') {
   if (req.body.actingRole !== 'Administrador') {
-    res.status(403).json({ error: 'Solo un Administrador puede gestionar usuarios' })
+    res.status(403).json({ error: `Solo un Administrador puede gestionar ${resource}` })
     return false
   }
   return true
@@ -824,6 +883,201 @@ app.put('/api/users/:id', async (req, res, next) => {
 // trazabilidad histórica (created_by/performed_by/registered_by quedarían
 // apuntando a un id inexistente en vez de simplemente NULL vía ON DELETE SET
 // NULL). Dar de baja es PUT /api/users/:id con { active: false }.
+
+// ---------------------------------------------------------------------------
+// Minibar / extras (catálogo + cargos por estadía)
+// ---------------------------------------------------------------------------
+
+app.get('/api/minibar/products', async (req, res, next) => {
+  try {
+    const { active } = req.query
+    const { rows } = await pool.query(
+      active === 'true'
+        ? 'SELECT * FROM minibar_products WHERE active = true ORDER BY name'
+        : 'SELECT * FROM minibar_products ORDER BY name',
+    )
+    res.json(rows.map(mapMinibarProduct))
+  } catch (err) {
+    next(err)
+  }
+})
+
+app.post('/api/minibar/products', async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res, 'productos de minibar')) return
+
+    const { name, price } = req.body
+    const trimmedName = (name ?? '').trim()
+    const parsedPrice = Number.parseFloat(price)
+    if (trimmedName === '') return res.status(400).json({ error: 'El nombre es obligatorio' })
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      return res.status(400).json({ error: 'El precio debe ser mayor a cero' })
+    }
+
+    const { rows } = await pool.query(`INSERT INTO minibar_products (name, price) VALUES ($1, $2) RETURNING *`, [
+      trimmedName,
+      parsedPrice,
+    ])
+    res.status(201).json(mapMinibarProduct(rows[0]))
+  } catch (err) {
+    // 23505 = unique_violation (constraint UNIQUE de name).
+    if (err.code === '23505') return res.status(400).json({ error: 'Ese producto ya existe' })
+    next(err)
+  }
+})
+
+// No hay DELETE /api/minibar/products/:id a propósito, mismo criterio que
+// usuarios: eliminar rompería la referencia desde minibar_charges en cargos
+// ya históricos (aunque product_id sea SET NULL, product_name desnormalizado
+// sobrevive de todas formas). Dar de baja es { active: false }.
+app.put('/api/minibar/products/:id', async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res, 'productos de minibar')) return
+
+    const { id } = req.params
+    const { name, price, active } = req.body
+    const sets = []
+    const values = []
+    let i = 1
+
+    if (name !== undefined) {
+      const trimmedName = name.trim()
+      if (trimmedName === '') return res.status(400).json({ error: 'El nombre no puede estar vacío' })
+      sets.push(`name = $${i++}`)
+      values.push(trimmedName)
+    }
+    if (price !== undefined) {
+      const parsedPrice = Number.parseFloat(price)
+      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+        return res.status(400).json({ error: 'El precio debe ser mayor a cero' })
+      }
+      sets.push(`price = $${i++}`)
+      values.push(parsedPrice)
+    }
+    if (active !== undefined) {
+      sets.push(`active = $${i++}`)
+      values.push(Boolean(active))
+    }
+
+    if (sets.length === 0) return res.status(400).json({ error: 'Nada para actualizar' })
+
+    values.push(id)
+    const { rows } = await pool.query(
+      `UPDATE minibar_products SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      values,
+    )
+    if (rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' })
+    res.json(mapMinibarProduct(rows[0]))
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'Ese producto ya existe' })
+    next(err)
+  }
+})
+
+app.get('/api/minibar/charges', async (req, res, next) => {
+  try {
+    const { roomId } = req.query
+    if (!roomId) return res.status(400).json({ error: 'roomId es requerido' })
+
+    const roomResult = await pool.query('SELECT status FROM rooms WHERE id = $1', [roomId])
+    if (!roomResult.rows[0]) return res.status(404).json({ error: 'Habitación no encontrada' })
+    if (roomResult.rows[0].status !== 'Ocupada') return res.json([])
+
+    const stayId = await findActiveStayId(pool, roomId)
+    if (!stayId) return res.json([])
+
+    const { rows } = await pool.query(
+      `SELECT mc.*, u.full_name AS registered_by_name
+         FROM minibar_charges mc
+         LEFT JOIN users u ON u.id = mc.registered_by
+        WHERE mc.stay_id = $1
+        ORDER BY mc.created_at ASC`,
+      [stayId],
+    )
+    res.json(rows.map(mapMinibarCharge))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Registra un cargo (no un pago) de minibar consumido en la estadía activa
+// de una habitación. Se registra solo al momento del checkout: no hay
+// pantalla separada para cargar minibar a mitad de la estadía.
+app.post('/api/minibar/charges', async (req, res, next) => {
+  const client = await pool.connect()
+  try {
+    const { roomId, productId, quantity, userId } = req.body
+    if (!roomId || !productId || quantity === undefined) {
+      client.release()
+      return res.status(400).json({ error: 'Datos de cargo de minibar incompletos' })
+    }
+    const parsedQuantity = Number.parseInt(quantity, 10)
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
+      client.release()
+      return res.status(400).json({ error: 'La cantidad debe ser un entero mayor a cero' })
+    }
+
+    await client.query('BEGIN')
+
+    // FOR UPDATE aunque este endpoint no escriba en rooms: serializa contra
+    // un checkout o pago concurrente sobre la misma habitación, igual que
+    // POST /api/payments.
+    const roomResult = await client.query('SELECT * FROM rooms WHERE id = $1 FOR UPDATE', [roomId])
+    const room = roomResult.rows[0]
+    if (!room) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Habitación no encontrada' })
+    }
+    if (room.status !== 'Ocupada') {
+      await client.query('ROLLBACK')
+      return res
+        .status(409)
+        .json({ error: `No se puede cargar minibar: habitación "${room.status}" sin estadía activa` })
+    }
+
+    const stayId = await findActiveStayId(client, roomId)
+    if (!stayId) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ error: 'No se encontró una estadía activa para esta habitación' })
+    }
+
+    const productResult = await client.query('SELECT * FROM minibar_products WHERE id = $1', [productId])
+    const product = productResult.rows[0]
+    if (!product) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Producto de minibar no encontrado' })
+    }
+    // Un producto desactivado no debe poder cargarse aunque el id siga
+    // siendo válido (ej. alguien tiene el selector abierto desde antes de
+    // que un Administrador lo desactivara).
+    if (!product.active) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ error: 'Ese producto de minibar está desactivado' })
+    }
+
+    const unitPrice = Number(product.price)
+    const subtotal = unitPrice * parsedQuantity
+
+    const inserted = await client.query(
+      `INSERT INTO minibar_charges (stay_id, room_id, product_id, product_name, unit_price, quantity, subtotal, registered_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [stayId, roomId, product.id, product.name, unitPrice, parsedQuantity, subtotal, userId ?? null],
+    )
+
+    const userResult = userId ? await client.query('SELECT full_name FROM users WHERE id = $1', [userId]) : { rows: [] }
+
+    await client.query('COMMIT')
+    res.status(201).json(mapMinibarCharge({ ...inserted.rows[0], registered_by_name: userResult.rows[0]?.full_name }))
+  } catch (err) {
+    await client.query('ROLLBACK')
+    next(err)
+  } finally {
+    client.release()
+  }
+})
+
+// No hay DELETE de un cargo individual — fuera de alcance. Si un cargo se
+// registró mal, es un caso de corrección manual en BD por ahora.
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true })

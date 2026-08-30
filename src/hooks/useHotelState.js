@@ -9,18 +9,21 @@ export function useHotelState() {
   const [rooms, setRooms] = useState([])
   const [reservations, setReservations] = useState([])
   const [users, setUsers] = useState([])
+  const [minibarProducts, setMinibarProducts] = useState([])
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
     try {
-      const [roomsData, reservationsData, usersData] = await Promise.all([
+      const [roomsData, reservationsData, usersData, minibarProductsData] = await Promise.all([
         api.getRooms(),
         api.getReservations(),
         api.getUsers(),
+        api.getMinibarProducts(),
       ])
       setRooms(roomsData)
       setReservations(reservationsData)
       setUsers(usersData)
+      setMinibarProducts(minibarProductsData)
     } catch (err) {
       addLog(`Error de conexión con la API: ${err.message}`, 'error')
     } finally {
@@ -219,10 +222,51 @@ export function useHotelState() {
     }
   }
 
+  async function addMinibarProduct({ name, price, actingRole }) {
+    try {
+      await api.addMinibarProduct({ name, price, actingRole })
+      addLog(`Producto de minibar "${name}" creado`, 'success')
+      await refresh()
+      return { ok: true }
+    } catch (err) {
+      addLog(`Error al crear el producto de minibar: ${err.message}`, 'error')
+      return { ok: false, error: err.message }
+    }
+  }
+
+  async function updateMinibarProduct(productId, patch) {
+    try {
+      await api.updateMinibarProduct(productId, patch)
+      addLog('Producto de minibar actualizado', 'success')
+      await refresh()
+      return { ok: true }
+    } catch (err) {
+      addLog(`Error al actualizar el producto de minibar: ${err.message}`, 'error')
+      return { ok: false, error: err.message }
+    }
+  }
+
+  // No refresca rooms/reservations/users/minibarProducts: un cargo de
+  // minibar no toca ninguna de esas tablas, solo minibar_charges (que
+  // CheckoutPage recarga por habitación con api.getMinibarCharges tras un
+  // alta exitosa, igual que ya hace con los pagos).
+  async function addMinibarCharge({ roomId, productId, quantity, userId }) {
+    const room = rooms.find((r) => r.id === roomId)
+    try {
+      const charge = await api.addMinibarCharge({ roomId, productId, quantity, userId })
+      addLog(`Minibar: ${quantity} × ${charge.productName} cargado — habitación ${room?.number ?? roomId}`, 'success')
+      return { ok: true, charge }
+    } catch (err) {
+      addLog(`No se pudo cargar el consumo de minibar: ${err.message}`, 'error')
+      return { ok: false, error: err.message }
+    }
+  }
+
   return {
     rooms,
     reservations,
     users,
+    minibarProducts,
     loading,
     checkIn,
     checkOut,
@@ -238,6 +282,9 @@ export function useHotelState() {
     addPayment,
     addUser,
     updateUser,
+    addMinibarProduct,
+    updateMinibarProduct,
+    addMinibarCharge,
     refresh,
   }
 }

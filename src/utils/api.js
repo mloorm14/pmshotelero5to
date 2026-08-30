@@ -49,4 +49,13 @@ export const api = {
   getUsers: (activeOnly) => request(`/users${toQueryString({ active: activeOnly ? true : undefined })}`),
   addUser: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
   updateUser: (id, patch) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+
+  getMinibarProducts: (activeOnly) =>
+    request(`/minibar/products${toQueryString({ active: activeOnly ? true : undefined })}`),
+  addMinibarProduct: (payload) => request('/minibar/products', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMinibarProduct: (id, patch) =>
+    request(`/minibar/products/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+
+  getMinibarCharges: (roomId) => request(`/minibar/charges${toQueryString({ roomId })}`),
+  addMinibarCharge: (payload) => request('/minibar/charges', { method: 'POST', body: JSON.stringify(payload) }),
 }
