@@ -100,12 +100,26 @@ export default function ReceptionPage({ rooms, reservations, onCheckIn, onAddPay
 
     const advance = Number.parseFloat(form.advance) || 0
     if (advance > 0) {
-      await onAddPayment({
+      const paymentResult = await onAddPayment({
         roomId: selectedRoom.id,
         type: PAYMENT_TYPES.ADVANCE,
         amount: advance,
         method: form.advanceMethod,
       })
+      // El check-in ya se completó (no se revierte); si el anticipo falla
+      // (ej. conflicto de bloqueo optimista) hay que decirlo explícitamente
+      // en vez de mostrar igual el mensaje de éxito con un monto que nunca
+      // se registró — el hook ya refrescó `rooms` con la version vigente.
+      if (!paymentResult.ok) {
+        showMessage(
+          `Check-in registrado, pero el anticipo no se pudo registrar: ${paymentResult.error}`,
+          'error',
+        )
+        setForm(createEmptyForm())
+        setSelectedRoomId(null)
+        setSelectedReservationId(null)
+        return
+      }
     }
 
     if (form.reservationId) onConvertReservation(form.reservationId)

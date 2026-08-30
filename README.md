@@ -16,8 +16,8 @@ Todas las reglas de negocio siguen implementadas como **funciones puras** (sin d
 └──────────────┘                             └──────────────┘                                  └──────────────┘
 ```
 
-- El **frontend** no persiste nada en `localStorage` (salvo el rol activo, que es solo una preferencia de UI). Todo el estado de negocio (habitaciones, reservas, historial) vive en PostgreSQL y se lee/escribe vía la API.
-- El **backend** no usa ORM: SQL parametrizado con el paquete `pg`, sin autenticación (prototipo académico).
+- El **frontend** no persiste nada de negocio en `localStorage` — solo la sesión de login simulado (`{ userId, fullName, username, role }`, ver "Usuarios, login simulado y roles"). Todo el estado de negocio (habitaciones, reservas, historial, usuarios) vive en PostgreSQL y se lee/escribe vía la API.
+- El **backend** no usa ORM: SQL parametrizado con el paquete `pg`, sin autenticación real (login simulado, prototipo académico).
 - Ver también la página **"Acerca del sistema"** dentro de la app (o `src/pages/AboutPage.jsx`) para el mapa de dependencias entre módulos y tablas.
 
 ## Instalación y ejecución
@@ -80,16 +80,39 @@ npm run lint              # oxlint
 
 Solo PostgreSQL corre en Docker; el backend y el frontend corren con `npm` normal, sin contenedores adicionales.
 
-## Roles
+## Usuarios, login simulado y roles
 
-El selector de rol (sin autenticación, solo para fines demostrativos) determina qué módulos son visibles en la barra lateral. El rol activo se guarda en `localStorage` del navegador (no en la base de datos). La lógica vive en `src/constants/roles.js` (mapa `MODULE_ACCESS`) y `src/utils/roles.js` (`canAccessModule(role, moduleId)`, `getAccessibleModules(role)`).
+No hay autenticación real: sin contraseña, sin hash, sin JWT. Al entrar, se elige un usuario de una lista (`src/components/auth/UserSelector.jsx`) y su rol viaja con él — no hay un selector de rol suelto como antes. La "sesión" (`{ userId, fullName, username, role }`) se guarda en `localStorage` (`src/utils/storage.js`, `loadSession`/`saveSession`) y se revalida contra la lista de usuarios activos al montar la app: si el usuario fue desactivado entre sesiones, se limpia la sesión y se vuelve a pedir que elija usuario (`src/App.jsx`). `Sidebar.jsx` muestra el usuario actual (no editable ahí) con un botón "Cambiar de usuario".
+
+La visibilidad de módulos sigue dependiendo solo del **rol** (no del usuario puntual), igual que antes: `src/constants/roles.js` (mapa `MODULE_ACCESS`) y `src/utils/roles.js` (`canAccessModule(role, moduleId)`, `getAccessibleModules(role)`).
 
 | Rol | Módulos visibles |
 |---|---|
 | Recepcionista | Reservas, Recepción (Check-in), Caja (Check-out), Disponibilidad, Acerca del sistema |
-| Administrador | Todo lo anterior + Ama de Llaves (Housekeeping) + Habitaciones (CRUD) + Reportes |
+| Administrador | Todo lo anterior + Ama de Llaves (Housekeeping) + Habitaciones (CRUD) + Reportes + **Usuarios** |
 
-Disponibilidad es de solo lectura (no modifica ningún dato), por eso también está habilitada para Recepcionista: es la vista natural para decidir en qué habitación ofrecer una reserva. Habitaciones (CRUD) sí cambia el catálogo de habitaciones (alta/edición/baja), por eso queda restringida a Administrador.
+Disponibilidad es de solo lectura (no modifica ningún dato), por eso también está habilitada para Recepcionista: es la vista natural para decidir en qué habitación ofrecer una reserva. Habitaciones (CRUD) y Usuarios sí cambian catálogos (habitaciones / cuentas), por eso quedan restringidos a Administrador.
+
+### CRUD de usuarios (solo Administrador)
+
+`src/pages/UsersPage.jsx` (+ `UserForm.jsx`/`UserList.jsx` en `src/components/users/`): alta de usuarios (nombre, usuario, rol) y edición (nombre, rol, activo/inactivo) — el `username` no se puede editar una vez creado, para no romper la trazabilidad de quién hizo qué si alguien le cambia el nombre de usuario. **No existe eliminar usuarios a propósito**: `created_by`/`performed_by`/`registered_by` (ver siguiente sección) quedarían apuntando a un id inexistente; dar de baja a alguien es desactivarlo (`active = false`), que además lo saca del selector de login sin borrar su historial.
+
+Como no hay sesión de servidor, `POST`/`PUT /api/users` no pueden saber por sí solos si quien llama es Administrador — el frontend manda `actingRole: session.role` en el body y el backend responde 403 si no es `'Administrador'`. Es deliberadamente simple (no es seguridad real, es solo consistencia con que el login tampoco lo es) y está comentado así en `server/index.js` para que quede claro que es una limitación conocida, no un descuido.
+
+## Trazabilidad (quién hizo qué)
+
+`reservations.created_by`, `check_in_history.performed_by`, `check_out_history.performed_by` y `payments.registered_by` (todas `INTEGER REFERENCES users(id) ON DELETE SET NULL`) guardan quién creó la reserva, hizo el check-in/check-out o registró el pago. El frontend manda `userId: session.userId` en cada una de esas cuatro llamadas — la inyección pasa por cuatro funciones wrapper en `src/App.jsx` (`handleCheckIn`, `handleCheckOut`, `handleAddReservation`, `handleAddPayment`) para que `ReceptionPage.jsx`/`CheckoutPage.jsx`/etc. no necesiten saber nada de sesión, solo siguen llamando a las mismas props que ya tenían.
+
+`GET /api/reservations`, `GET /api/payments` y `GET /api/history` hacen `LEFT JOIN users` (no `JOIN`) para resolver el nombre — si el usuario fue desactivado o el campo quedó `NULL` (llamadas de antes de esta funcionalidad), el frontend muestra "No disponible" en vez de romperse (`ReportsPage.jsx`, columna "Registrado por"). `userId` es opcional en las cuatro llamadas a propósito, para no romper un caller que todavía no lo mande.
+
+## Bloqueo optimista (checkout y pagos)
+
+`rooms.version` (`INTEGER NOT NULL DEFAULT 1`) se incrementa en cada `UPDATE` de `POST /api/checkout` y `POST /api/payments` — las dos operaciones más sensibles a que dos usuarios trabajen la misma habitación a la vez (mueven dinero y cierran una estadía). Antes de guardar, ambos endpoints comparan la `version` que el body trae (capturada por el frontend al abrir la pantalla) contra la `version` actual bajo `SELECT ... FOR UPDATE`; si no coinciden, alguien más ya modificó esa habitación y se responde `409` sin aplicar ningún cambio, en vez de sobrescribir en silencio.
+
+- `POST /api/payments` no tenía ningún `UPDATE rooms` propio antes de este fix (solo lee la fila con `FOR UPDATE` para validar `total`/`status`) — se agregó un `UPDATE rooms SET version = version + 1` mínimo solo para que el contador avance ahí también. Sin esto, dos registros de pago concurrentes sobre la misma estadía pasarían el chequeo igual, porque nada habría movido la `version` entre uno y otro — que es exactamente la carrera que se quiere detectar.
+- `version` es opcional en el body, igual que `userId`: si no viene, no se valida (no rompe un caller que todavía no lo mande).
+- Si el checkout/pago falla por *cualquier* motivo (incluyendo este 409), el hook (`src/hooks/useHotelState.js`) refresca `rooms` desde la API antes de devolver el error a la pantalla — sin este refresh, un reintento inmediato repetiría la `version` vieja y volvería a fallar en loop. `ReceptionPage.jsx`/`CheckoutPage.jsx` muestran el mensaje de error tal cual lo devuelve la API (`InlineMessage`), que ya es explícito ("Esta habitación fue modificada por otro usuario...").
+- **No se aplica a `PUT /api/rooms/:id` ni `PUT /api/reservations/:id`** en este fix (el riesgo de choque en ediciones de catálogo/estado es menor que en checkout/pagos) — quedan con un comentario `// TODO: version` marcando dónde iría si hace falta más adelante. `reservations.version` existe en el schema para ese propósito futuro pero no está conectado a nada todavía.
 
 ## Panel de eventos (logs en pantalla)
 
@@ -120,10 +143,13 @@ Barra inferior, colapsable, tipo terminal (`src/components/logging/LogPanel.jsx`
 | **Caja (Check-out)** | Recepcionista, Administrador | `rooms`, `payments` | — | Saldo **con signo** de la estadía (total − anticipos netos − cobros finales ya registrados): positivo = falta cobrar, negativo = corresponde devolver, cero = saldada | `calculateBalanceDue(total, payments)` en `src/utils/payments.js` |
 | **Caja (Check-out)** | Recepcionista, Administrador | `reservations` | `reservations` | Al procesar el check-out, si la habitación tiene una reserva "En curso" vinculada, esa reserva pasa a "Finalizada" en la misma transacción | `POST /api/checkout` en `server/index.js` |
 | **Caja (Check-out)** | Recepcionista, Administrador | `payments` | `payments` | Checkout forzado (walk-out): exige un motivo de texto y registra el saldo positivo pendiente como `payments.type = 'Saldo pendiente por cobrar'`; no cuenta como ingreso cobrado | `PAYMENT_TYPES.UNCOLLECTED_BALANCE` en `src/utils/payments.js`, `POST /api/checkout` en `server/index.js` |
+| **Caja (Check-out)** | Recepcionista, Administrador | `rooms` | `rooms` | Bloqueo optimista: si la `version` enviada no coincide con `rooms.version` bajo `FOR UPDATE`, responde 409 sin aplicar cambios ("modificada por otro usuario") en vez de sobrescribir en silencio — ver "Bloqueo optimista" | `POST /api/checkout` en `server/index.js` |
 | **Ama de Llaves** | Administrador | `rooms` | `rooms` | Solo habitaciones "Sucia" pueden marcarse como limpias | Lógica de estado en `src/pages/HousekeepingPage.jsx` sobre `ROOM_STATUSES` |
 | **Ama de Llaves** | Administrador | `rooms` | `rooms` | Una habitación puede enviarse/retirarse de mantenimiento, limpiando huésped/facturación al entrar | `toggleMaintenance(roomId)` en `src/hooks/useHotelState.js` |
 | **Pagos (anticipo/devolución/cobro final)** | Recepcionista, Administrador | `rooms`, `check_in_history`, `payments` | `payments` | Un anticipo no puede exceder el total de la estadía; una devolución no puede exceder el neto de anticipos registrados; un cobro final no puede exceder el saldo pendiente. `'Saldo pendiente por cobrar'` no es un tipo aceptado por esta validación — solo lo inserta el checkout forzado, directamente | `validatePayment({ type, amount, total, existingPayments })` en `src/utils/payments.js` |
 | **Pagos (anticipo/devolución/cobro final)** | Recepcionista, Administrador | `rooms`, `check_in_history` | `payments` | Solo se permite registrar un pago si la habitación está "Ocupada" (hay una estadía activa); valida en la API con `FOR UPDATE` sobre `rooms`, `POST /api/payments` responde 409 si no | Validado en `POST /api/payments` en `server/index.js` |
+| **Pagos (anticipo/devolución/cobro final)** | Recepcionista, Administrador | `rooms` | `rooms` | Mismo bloqueo optimista que checkout (`version` opcional, 409 si no coincide); avanza `rooms.version` aunque este endpoint no tocaba `rooms` antes de este fix | `POST /api/payments` en `server/index.js` — ver "Bloqueo optimista" |
+| **Trazabilidad** | Recepcionista, Administrador | `users` | `reservations`, `check_in_history`, `check_out_history`, `payments` | Cada reserva/check-in/check-out/pago guarda quién lo hizo (`created_by`/`performed_by`/`registered_by`); Reportes muestra el nombre resuelto vía `LEFT JOIN users`, o "No disponible" si el usuario fue desactivado | `src/App.jsx` (wrappers `handleCheckIn`/`handleCheckOut`/`handleAddReservation`/`handleAddPayment`) — ver "Trazabilidad" |
 | **Alertas de check-out** | Recepcionista, Administrador | `rooms` | — | Clasifica cada habitación "Ocupada" según `check_out_date` en `overdue` (vencido), `dueToday` (hoy), `dueSoon` (próximas 24-48h) o `normal` | `classifyCheckoutAlert(checkOutDate, todayISO)` en `src/utils/alerts.js` |
 | **Habitaciones (CRUD)** | Administrador | `rooms` | `rooms` | Número de habitación no vacío y único; capacidad entera positiva; tarifa por defecto positiva | `validateRoom({ number, capacity, defaultRate }, existingRooms, excludeRoomId)` en `src/utils/rooms.js` |
 | **Habitaciones (CRUD)** | Administrador | `rooms`, `reservations`, `payments` | `rooms` | No se permite eliminar una habitación "Ocupada", con reservas activas (Pendiente/Confirmada) o con anticipos de una estadía sin cerrar (checkout pendiente) | Validado en `DELETE /api/rooms/:id` en `server/index.js` (responde 409) |
@@ -131,7 +157,9 @@ Barra inferior, colapsable, tipo terminal (`src/components/logging/LogPanel.jsx`
 | **Reportes / Auditoría** | Administrador | `check_in_history`, `check_out_history` | — | Filtra el historial combinado por rango de fechas y/o número de habitación | `filterHistory(entries, { startDate, endDate, roomNumber })` en `src/utils/reports.js` |
 | **Reportes / Auditoría** | Administrador | `check_in_history`, `check_out_history` | — | Calcula el total facturado en el rango filtrado (solo cuenta cada estadía una vez, contando check-ins) | `calculateTotalBilled(entries)` en `src/utils/reports.js` |
 | **Reportes / Auditoría** | Administrador | `payments` (vía `GET /api/history`) | — | Calcula, por separado, el monto total de saldos pendientes de checkouts forzados en el rango filtrado — no se suma al total facturado | `calculateTotalPending(entries)` en `src/utils/reports.js` |
-| **Selector de Rol** | — | — | — | Determina qué módulos son accesibles según el rol activo | `canAccessModule(role, moduleId)`, `getAccessibleModules(role)` en `src/utils/roles.js` |
+| **Usuarios (CRUD)** | Administrador | `users` | `users` | Nombre y usuario no vacíos; rol debe ser Recepcionista o Administrador; `username` único (409→400 con mensaje claro, no 500); `username` no editable una vez creado | `POST`/`PUT /api/users` en `server/index.js` |
+| **Usuarios (CRUD)** | Administrador | — | — | Solo un Administrador puede crear/editar usuarios — el frontend manda `actingRole: session.role`, la API responde 403 si no es Administrador (login simulado, no hay sesión de servidor) | `requireAdmin` en `server/index.js` |
+| **Login simulado / Selector de Usuario** | — | `users` | — | Determina qué módulos son accesibles según el rol del usuario elegido; la sesión se revalida contra usuarios activos al montar la app | `canAccessModule(role, moduleId)`, `getAccessibleModules(role)` en `src/utils/roles.js`; revalidación en `src/App.jsx` |
 
 El backend combina `check_in_history`, `check_out_history` y los pagos `'Saldo pendiente por cobrar'` de `payments` (unidos a `check_in_history` para exponer el documento del huésped) en `GET /api/history` (ver `server/index.js`); el frontend aplica `filterHistory`/`calculateTotalBilled`/`calculateTotalPending` sobre el resultado.
 
@@ -243,6 +271,12 @@ Formato `Subsistema/s: A > B > C`, tal como pide la materia. Todos verificables 
 | 24 | Checkout forzado no infla el total facturado | Caja > Reportes | Mismo escenario del caso 23, usar "Salida sin pago completo" con un motivo → la reserva queda "Finalizada", la habitación pasa a "Sucia", y en Reportes el monto aparece en "Pendiente de cobro" sin sumarse al total facturado (`calculateTotalBilled` no cambia) |
 | 25 | Selección visual independiente en Recepción | Reservas > Recepción | Seleccionar una reserva confirmada en "Reservas confirmadas por convertir" y luego una habitación en el grid de abajo → ambos elementos deben mostrar su indicador de selección ("Seleccionada") al mismo tiempo |
 | 26 | Identidad precargada desde la reserva es de solo lectura | Reservas > Recepción | Crear una reserva con documento y teléfono → confirmarla → usarla para un check-in → los campos Documento/Teléfono aparecen precargados, de solo lectura, con la nota visible; una reserva sin esos datos deja los campos editables como hoy |
+| 27 | Visibilidad de "Usuarios" solo para Administrador | Usuarios > Selector de rol > Sidebar | Con un usuario de rol Recepcionista logueado, "Usuarios" no aparece en la navegación ni es accesible; con un Administrador, sí |
+| 28 | Alta de usuario y trazabilidad en Reportes | Usuarios > Recepción > Reportes | Un Administrador crea un usuario Recepcionista → cerrar sesión → entrar con ese usuario → hacer un check-in → volver a entrar como Administrador → en Reportes, la fila de ese check-in muestra "Registrado por: {nombre del recepcionista}" |
+| 29 | Username duplicado rechazado | Usuarios > API | Crear un usuario con un `username` ya existente → `POST /api/users` responde 400 con mensaje claro ("Ese nombre de usuario ya existe"), no 500 |
+| 30 | Sesión revalidada al desactivar un usuario | Usuarios > Selector de Usuario | Con un usuario logueado, un Administrador lo desactiva (`active: false`) desde otra sesión/pestaña → al refrescar la app del usuario desactivado, la sesión se limpia y vuelve a la pantalla de selección de usuario |
+| 31 | Bloqueo optimista en checkout — conflicto de versión | Caja > API | Capturar la `version` de una habitación Ocupada → un primer `POST /api/checkout` con esa `version` tiene éxito → un segundo intento con la misma `version` (ya vieja) responde 409 con el mensaje de "modificada por otro usuario" |
+| 32 | Bloqueo optimista detecta pagos concurrentes | Pagos > Caja > API | Registrar un anticipo (esto avanza `rooms.version`) → intentar un checkout con la `version` capturada *antes* de ese anticipo → responde 409, no se procesa el checkout con datos desactualizados |
 
 ## Heurísticas de Nielsen aplicadas
 
@@ -268,10 +302,12 @@ Auditoría dirigida tras el rework de flujo (reservas, pagos, checkout). No cubr
 ```
 server/                Backend (Express + PostgreSQL)
   docker-compose.yml    Servicio único de PostgreSQL 16
-  schema.sql             Definición de tablas (rooms, reservations, check_in_history, check_out_history, payments)
-  seed.sql                Datos iniciales (4 habitaciones con tarifa/capacidad)
+  schema.sql             Definición de tablas (users, rooms, reservations, check_in_history, check_out_history, payments)
+  seed.sql                Datos iniciales (4 habitaciones + 2 usuarios base)
   index.js                 Endpoints REST
   migrate.js               Ejecuta schema.sql + seed.sql contra el contenedor
+  scripts/
+    repair-orphan-reservation.js  Herramienta de mantenimiento puntual (ver README, "Reparación de datos huérfanos")
 
 public/
   icons.svg             Sprite de iconos propios (stroke-based) para módulos y acciones
@@ -280,19 +316,21 @@ public/
 src/
   index.css             Sistema de diseño: tokens de color (wine/ink), radios y tipografía (@theme de Tailwind v4)
   components/
+    auth/               UserSelector (pantalla de login simulado)
     reception/       CheckInForm, RoomSelector, ReservationConversionPanel
     reservations/     ReservationForm, ReservationList (reservas activas + historial colapsado)
     rooms/              RoomForm, RoomList (alta/edición/baja de habitaciones)
-    layout/           AppLayout, Sidebar (selector de rol + navegación)
+    users/               UserForm, UserList (alta/edición/baja lógica de usuarios — solo Administrador)
+    layout/           AppLayout, Sidebar (usuario actual + navegación, ya no selector de rol suelto)
     shared/           StatusBadge, RequiredLabel, InlineMessage (feedback visible en pantalla)
     logging/            LogPanel (colapsado por defecto)
   context/
     LogContext.jsx    Provider de logs en memoria; useLog.js expone el hook por separado (Fast Refresh)
   pages/              ReservationsPage, ReceptionPage, CheckoutPage,
                       HousekeepingPage, RoomsPage, AvailabilityPage,
-                      ReportsPage, AboutPage
+                      ReportsPage, UsersPage, AboutPage
   hooks/
-    useHotelState.js       Estado central (rooms, reservations) respaldado por la API + logging de cada acción
+    useHotelState.js       Estado central (rooms, reservations, users) respaldado por la API + logging de cada acción
     useTransientMessage.js Mensaje de éxito/error autoocultable para InlineMessage (heurística 1)
   utils/
     validation.js     Validaciones de formato de campos
@@ -304,10 +342,14 @@ src/
     reports.js        Filtrado y totalización del historial de auditoría (`calculateTotalBilled`, `calculateTotalPending`)
     roles.js          Control de acceso por rol
     dates.js          Utilidades de fecha compartidas
-    storage.js        Persistencia del rol activo en localStorage
+    storage.js        Persistencia de la sesión de login simulado en localStorage (`loadSession`/`saveSession`)
     api.js             Cliente fetch hacia la API REST
   constants/
     rooms.js          Estados y estilos de habitaciones (paleta carmesí/vino)
     reservations.js   Estados y estilos de reservas
     roles.js          Roles y mapa de acceso a módulos
 ```
+
+## Pendiente para la siguiente sesión
+
+**Automatizar con Playwright** (no está instalado en el proyecto todavía) los escenarios verificados manualmente/vía API en esta ronda — usuarios, trazabilidad y bloqueo optimista — y los 10 casos de prueba de integración mínimos que pide la materia. Los casos #27-32 de la tabla de arriba son los candidatos más directos para el primer set de specs E2E.

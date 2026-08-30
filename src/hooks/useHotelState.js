@@ -8,13 +8,19 @@ export function useHotelState() {
   const { addLog } = useLog()
   const [rooms, setRooms] = useState([])
   const [reservations, setReservations] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
     try {
-      const [roomsData, reservationsData] = await Promise.all([api.getRooms(), api.getReservations()])
+      const [roomsData, reservationsData, usersData] = await Promise.all([
+        api.getRooms(),
+        api.getReservations(),
+        api.getUsers(),
+      ])
       setRooms(roomsData)
       setReservations(reservationsData)
+      setUsers(usersData)
     } catch (err) {
       addLog(`Error de conexión con la API: ${err.message}`, 'error')
     } finally {
@@ -26,10 +32,10 @@ export function useHotelState() {
     refresh()
   }, [refresh])
 
-  async function checkIn(roomId, guest, billing) {
+  async function checkIn(roomId, guest, billing, { userId } = {}) {
     const room = rooms.find((r) => r.id === roomId)
     try {
-      await api.checkIn({ roomId, guest, billing })
+      await api.checkIn({ roomId, guest, billing, userId })
       addLog(`Check-in exitoso: ${guest.fullName} en habitación ${room?.number ?? roomId}`, 'success')
       await refresh()
       return { ok: true }
@@ -39,10 +45,10 @@ export function useHotelState() {
     }
   }
 
-  async function checkOut(roomId, { forced, note } = {}) {
+  async function checkOut(roomId, { forced, note, userId, version } = {}) {
     const room = rooms.find((r) => r.id === roomId)
     try {
-      await api.checkOut({ roomId, forced, note })
+      await api.checkOut({ roomId, forced, note, userId, version })
       addLog(
         forced
           ? `Check-out forzado (saldo pendiente): habitación ${room?.number ?? roomId}`
@@ -53,14 +59,19 @@ export function useHotelState() {
       return { ok: true }
     } catch (err) {
       addLog(`Check-out bloqueado: ${err.message}`, 'error')
+      // Un 409 de bloqueo optimista (u otro cambio de estado que ya haya
+      // ocurrido, ej. saldo distinto al esperado) deja `rooms` desactualizado
+      // en el frontend. Sin este refresh, la UI seguiría mostrando la
+      // `version` vieja y un reintento inmediato volvería a fallar en loop.
+      await refresh()
       return { ok: false, error: err.message }
     }
   }
 
-  async function addReservation({ roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone }) {
+  async function addReservation({ roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone, userId }) {
     const room = rooms.find((r) => r.id === roomId)
     try {
-      await api.addReservation({ roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone })
+      await api.addReservation({ roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone, userId })
       addLog(`Reserva creada: ${guestName} — habitación ${room?.number ?? roomId}`, 'success')
       await refresh()
       return { ok: true }
@@ -139,15 +150,18 @@ export function useHotelState() {
     }
   }
 
-  async function addPayment({ roomId, type, amount, method }) {
+  async function addPayment({ roomId, type, amount, method, userId, version }) {
     const room = rooms.find((r) => r.id === roomId)
     try {
-      await api.addPayment({ roomId, type, amount, method })
+      await api.addPayment({ roomId, type, amount, method, userId, version })
       addLog(`${type} de $${Number(amount).toFixed(2)} registrado — habitación ${room?.number ?? roomId}`, 'success')
       await refresh()
       return { ok: true }
     } catch (err) {
       addLog(`Pago rechazado: ${err.message}`, 'error')
+      // Mismo motivo que en checkOut: si fue un 409 de bloqueo optimista, hay
+      // que refrescar `rooms` para que un reintento use la version actual.
+      await refresh()
       return { ok: false, error: err.message }
     }
   }
@@ -181,9 +195,34 @@ export function useHotelState() {
     }
   }
 
+  async function addUser({ fullName, username, role, actingRole }) {
+    try {
+      await api.addUser({ fullName, username, role, actingRole })
+      addLog(`Usuario ${username} creado`, 'success')
+      await refresh()
+      return { ok: true }
+    } catch (err) {
+      addLog(`Error al crear el usuario: ${err.message}`, 'error')
+      return { ok: false, error: err.message }
+    }
+  }
+
+  async function updateUser(userId, patch) {
+    try {
+      await api.updateUser(userId, patch)
+      addLog(`Usuario actualizado`, 'success')
+      await refresh()
+      return { ok: true }
+    } catch (err) {
+      addLog(`Error al actualizar el usuario: ${err.message}`, 'error')
+      return { ok: false, error: err.message }
+    }
+  }
+
   return {
     rooms,
     reservations,
+    users,
     loading,
     checkIn,
     checkOut,
@@ -197,6 +236,8 @@ export function useHotelState() {
     updateRoomDetails,
     deleteRoom,
     addPayment,
+    addUser,
+    updateUser,
     refresh,
   }
 }

@@ -45,4 +45,8 @@ export const api = {
 
   getPayments: (roomId) => request(`/payments${toQueryString({ roomId })}`),
   addPayment: (payload) => request('/payments', { method: 'POST', body: JSON.stringify(payload) }),
+
+  getUsers: (activeOnly) => request(`/users${toQueryString({ active: activeOnly ? true : undefined })}`),
+  addUser: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
+  updateUser: (id, patch) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
 }

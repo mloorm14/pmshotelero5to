@@ -1,4 +1,3 @@
-import { ROLES } from '../../constants/roles'
 import { canAccessModule } from '../../utils/roles'
 
 const NAV_ITEMS = [
@@ -9,11 +8,12 @@ const NAV_ITEMS = [
   { id: 'rooms', label: 'Habitaciones', description: 'Alta, baja y tarifas', icon: 'icon-rooms' },
   { id: 'availability', label: 'Disponibilidad', description: 'Calendario por habitación', icon: 'icon-availability' },
   { id: 'reports', label: 'Reportes', description: 'Auditoría y facturación', icon: 'icon-reports' },
+  { id: 'users', label: 'Usuarios', description: 'Alta y roles de usuario', icon: 'icon-users' },
   { id: 'about', label: 'Acerca del sistema', description: 'Mapa de subsistemas', icon: 'icon-about' },
 ]
 
-export default function Sidebar({ activeModule, onNavigate, stats, alertCount, role, onRoleChange }) {
-  const visibleItems = NAV_ITEMS.filter((item) => canAccessModule(role, item.id))
+export default function Sidebar({ activeModule, onNavigate, stats, alertCount, session, onLogout }) {
+  const visibleItems = NAV_ITEMS.filter((item) => canAccessModule(session.role, item.id))
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-wine-900/30 bg-ink-950 text-white">
@@ -30,18 +30,16 @@ export default function Sidebar({ activeModule, onNavigate, stats, alertCount, r
       </div>
 
       <div className="border-b border-wine-900/30 px-5 py-4">
-        <label htmlFor="role" className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-ink-400">
-          Rol actual
-        </label>
-        <select
-          id="role"
-          value={role}
-          onChange={(e) => onRoleChange(e.target.value)}
-          className="w-full rounded-md border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-50 focus:outline-none focus:ring-2 focus:ring-wine-500"
+        <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-ink-400">Usuario actual</p>
+        <p className="text-sm font-semibold text-ink-50">{session.fullName}</p>
+        <p className="text-xs text-ink-400">{session.role}</p>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="mt-2 w-full rounded-md border border-ink-700 px-3 py-1.5 text-xs font-semibold text-ink-300 transition-colors hover:border-wine-600 hover:text-wine-300"
         >
-          <option value={ROLES.RECEPTIONIST}>{ROLES.RECEPTIONIST}</option>
-          <option value={ROLES.ADMIN}>{ROLES.ADMIN}</option>
-        </select>
+          Cambiar de usuario
+        </button>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">

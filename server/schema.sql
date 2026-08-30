@@ -6,7 +6,32 @@ DROP TABLE IF EXISTS check_out_history CASCADE;
 DROP TABLE IF EXISTS check_in_history CASCADE;
 DROP TABLE IF EXISTS reservations CASCADE;
 DROP TABLE IF EXISTS rooms CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
 
+-- Login simulado (sin contraseña real, sin hash, sin JWT): se elige un
+-- usuario de una lista y su rol viaja con él. "Eliminar" un usuario está
+-- deliberadamente fuera de alcance (ver PUT /api/users/:id en
+-- server/index.js) porque rompería la trazabilidad de created_by/
+-- performed_by/registered_by de las tablas de abajo; para dar de baja a
+-- alguien se usa `active = false`.
+CREATE TABLE users (
+  id          SERIAL PRIMARY KEY,
+  full_name   VARCHAR(200) NOT NULL,
+  username    VARCHAR(50) NOT NULL UNIQUE,
+  role        VARCHAR(20) NOT NULL CHECK (role IN ('Recepcionista', 'Administrador')),
+  active      BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_users_active ON users(active);
+
+-- version: se incrementa en cada UPDATE relevante de rooms/reservations. El
+-- backend lo usa para bloqueo optimista en checkout y pagos (los endpoints
+-- más sensibles a que dos usuarios trabajen la misma habitación a la vez):
+-- antes de guardar, compara la version que el cliente capturó al abrir la
+-- pantalla contra la version actual en la fila con FOR UPDATE; si no
+-- coinciden, alguien más ya la modificó y se rechaza con 409 en vez de
+-- sobrescribir en silencio.
 CREATE TABLE rooms (
   id              SERIAL PRIMARY KEY,
   number          VARCHAR(10) NOT NULL UNIQUE,
@@ -20,7 +45,8 @@ CREATE TABLE rooms (
   discount        NUMERIC(10, 2),
   total           NUMERIC(10, 2),
   default_rate    NUMERIC(10, 2) NOT NULL DEFAULT 0,
-  capacity        INTEGER NOT NULL DEFAULT 1
+  capacity        INTEGER NOT NULL DEFAULT 1,
+  version         INTEGER NOT NULL DEFAULT 1
 );
 
 -- room_id de reservations usa ON DELETE CASCADE: al eliminar una habitacion
@@ -39,6 +65,10 @@ CREATE TABLE rooms (
 -- esos datos a mano): cuando SI se cargan, el check-in los precarga como
 -- solo lectura para que no puedan divergir del huesped que reservo (ver
 -- README, "Ciclo de vida de una reserva" / identidad del huesped).
+-- created_by usa ON DELETE SET NULL (no CASCADE, como room_id de abajo):
+-- eliminar un usuario no debe borrar el historial de quién creó qué. Como el
+-- CRUD de usuarios solo desactiva (no elimina), esto es más una garantía de
+-- integridad que un caso de uso esperado hoy.
 CREATE TABLE reservations (
   id              SERIAL PRIMARY KEY,
   room_id         INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -48,6 +78,8 @@ CREATE TABLE reservations (
   check_in_date   DATE NOT NULL,
   check_out_date  DATE NOT NULL,
   status          VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+  version         INTEGER NOT NULL DEFAULT 1,
+  created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -60,6 +92,7 @@ CREATE TABLE check_in_history (
   guest_phone     VARCHAR(20) NOT NULL,
   nights          INTEGER NOT NULL,
   total           NUMERIC(10, 2) NOT NULL,
+  performed_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -69,6 +102,7 @@ CREATE TABLE check_out_history (
   room_number     VARCHAR(10) NOT NULL,
   guest_name      VARCHAR(200),
   total           NUMERIC(10, 2),
+  performed_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -92,6 +126,7 @@ CREATE TABLE payments (
   amount          NUMERIC(10, 2) NOT NULL,
   method          VARCHAR(20) NOT NULL DEFAULT 'Efectivo',
   note            TEXT,
+  registered_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

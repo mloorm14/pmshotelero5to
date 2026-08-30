@@ -11,5 +11,6 @@ export const MODULE_ACCESS = {
   rooms: [ROLES.ADMIN],
   availability: [ROLES.RECEPTIONIST, ROLES.ADMIN],
   reports: [ROLES.ADMIN],
+  users: [ROLES.ADMIN],
   about: [ROLES.RECEPTIONIST, ROLES.ADMIN],
 }

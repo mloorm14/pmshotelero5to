@@ -1,13 +1,23 @@
-const ROLE_STORAGE_KEY = 'pms-hotelero-role'
+const SESSION_STORAGE_KEY = 'pms-hotelero-session'
 
-export function loadRole() {
+// session = { userId, fullName, username, role } — se guarda el objeto
+// completo (no solo el id) para no tener que volver a pedirlo a la API en
+// cada carga. Se revalida igual contra la lista de usuarios activos al
+// montar la app (ver src/App.jsx) por si el usuario fue desactivado entre
+// sesiones.
+export function loadSession() {
   try {
-    return localStorage.getItem(ROLE_STORAGE_KEY)
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
   } catch {
     return null
   }
 }
 
-export function saveRole(role) {
-  localStorage.setItem(ROLE_STORAGE_KEY, role)
+export function saveSession(session) {
+  if (session) {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  } else {
+    localStorage.removeItem(SESSION_STORAGE_KEY)
+  }
 }

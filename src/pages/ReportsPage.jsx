@@ -131,6 +131,7 @@ export default function ReportsPage({ rooms }) {
                   <th className="py-2 pr-4">Documento</th>
                   <th className="py-2 pr-4">Total</th>
                   <th className="py-2 pr-4">Motivo</th>
+                  <th className="py-2 pr-4">Registrado por</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,6 +152,7 @@ export default function ReportsPage({ rooms }) {
                       {entry.total !== null ? `$${Number(entry.total).toFixed(2)}` : '—'}
                     </td>
                     <td className="py-2.5 pr-4 text-ink-500">{entry.note ?? '—'}</td>
+                    <td className="py-2.5 pr-4 text-ink-500">{entry.performedByName ?? 'No disponible'}</td>
                   </tr>
                 ))}
               </tbody>

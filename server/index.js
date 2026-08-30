@@ -20,6 +20,7 @@ function mapRoom(row) {
     id: row.id,
     number: row.number,
     status: row.status,
+    version: row.version,
     defaultRate: row.default_rate !== null ? Number(row.default_rate) : null,
     capacity: row.capacity !== null ? Number(row.capacity) : null,
     guest: row.guest_name
@@ -49,6 +50,11 @@ function mapReservation(row) {
     checkInDate: row.check_in_date,
     checkOutDate: row.check_out_date,
     status: row.status,
+    createdBy: row.created_by ?? null,
+    // Null si el usuario fue desactivado/eliminado (LEFT JOIN sin match) o si
+    // la reserva es de antes de esta funcionalidad — el frontend lo muestra
+    // como "Usuario no disponible" en vez de romperse.
+    createdByName: row.created_by_name ?? null,
     createdAt: row.created_at,
   }
 }
@@ -62,6 +68,8 @@ function mapPayment(row) {
     amount: Number(row.amount),
     method: row.method,
     note: row.note,
+    registeredBy: row.registered_by ?? null,
+    registeredByName: row.registered_by_name ?? null,
     createdAt: row.created_at,
   }
 }
@@ -77,7 +85,19 @@ function mapHistoryEntry(row) {
     nights: row.nights !== null ? Number(row.nights) : null,
     total: row.total !== null ? Number(row.total) : null,
     note: row.note,
+    performedByName: row.performed_by_name ?? null,
     at: row.created_at,
+  }
+}
+
+function mapUser(row) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    username: row.username,
+    role: row.role,
+    active: row.active,
+    createdAt: row.created_at,
   }
 }
 
@@ -249,9 +269,10 @@ app.delete('/api/rooms/:id', async (req, res, next) => {
 app.get('/api/reservations', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT r.*, rm.number AS room_number
+      `SELECT r.*, rm.number AS room_number, u.full_name AS created_by_name
          FROM reservations r
          JOIN rooms rm ON rm.id = r.room_id
+         LEFT JOIN users u ON u.id = r.created_by
         ORDER BY r.created_at DESC`,
     )
     res.json(rows.map(mapReservation))
@@ -262,7 +283,7 @@ app.get('/api/reservations', async (req, res, next) => {
 
 app.post('/api/reservations', async (req, res, next) => {
   try {
-    const { roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone } = req.body
+    const { roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone, userId } = req.body
     if (!roomId || !guestName || !checkInDate || !checkOutDate) {
       return res.status(400).json({ error: 'Datos de reserva incompletos' })
     }
@@ -281,18 +302,31 @@ app.post('/api/reservations', async (req, res, next) => {
       if (!phoneValidation.valid) return res.status(400).json({ error: phoneValidation.error })
     }
 
+    // userId es opcional (no debe romper un caller que todavía no lo mande);
+    // si no viene, created_by queda NULL.
     const { rows } = await pool.query(
-      `INSERT INTO reservations (room_id, guest_name, guest_document, guest_phone, check_in_date, check_out_date)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [roomId, guestName.trim(), trimmedDocument || null, trimmedPhone || null, checkInDate, checkOutDate],
+      `INSERT INTO reservations (room_id, guest_name, guest_document, guest_phone, check_in_date, check_out_date, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [roomId, guestName.trim(), trimmedDocument || null, trimmedPhone || null, checkInDate, checkOutDate, userId ?? null],
     )
     const roomResult = await pool.query('SELECT number FROM rooms WHERE id = $1', [roomId])
-    res.status(201).json(mapReservation({ ...rows[0], room_number: roomResult.rows[0]?.number }))
+    const userResult = userId ? await pool.query('SELECT full_name FROM users WHERE id = $1', [userId]) : { rows: [] }
+    res.status(201).json(
+      mapReservation({
+        ...rows[0],
+        room_number: roomResult.rows[0]?.number,
+        created_by_name: userResult.rows[0]?.full_name,
+      }),
+    )
   } catch (err) {
     next(err)
   }
 })
 
+// TODO: version — reservations.version existe en el schema pero este prompt
+// no aplica bloqueo optimista aquí (el riesgo de choque en transiciones de
+// estado es menor que en checkout/pagos, que sí mueven dinero). Agregar el
+// mismo patrón de POST /api/checkout si hace falta más adelante.
 app.put('/api/reservations/:id', async (req, res, next) => {
   try {
     const { id } = req.params
@@ -327,7 +361,16 @@ app.put('/api/reservations/:id', async (req, res, next) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Reserva no encontrada' })
 
     const roomResult = await pool.query('SELECT number FROM rooms WHERE id = $1', [rows[0].room_id])
-    res.json(mapReservation({ ...rows[0], room_number: roomResult.rows[0]?.number }))
+    const userResult = rows[0].created_by
+      ? await pool.query('SELECT full_name FROM users WHERE id = $1', [rows[0].created_by])
+      : { rows: [] }
+    res.json(
+      mapReservation({
+        ...rows[0],
+        room_number: roomResult.rows[0]?.number,
+        created_by_name: userResult.rows[0]?.full_name,
+      }),
+    )
   } catch (err) {
     next(err)
   }
@@ -340,7 +383,7 @@ app.put('/api/reservations/:id', async (req, res, next) => {
 app.post('/api/checkin', async (req, res, next) => {
   const client = await pool.connect()
   try {
-    const { roomId, guest, billing } = req.body
+    const { roomId, guest, billing, userId } = req.body
     if (!roomId || !guest || !billing) {
       client.release()
       return res.status(400).json({ error: 'Datos de check-in incompletos' })
@@ -377,9 +420,9 @@ app.post('/api/checkin', async (req, res, next) => {
     )
 
     await client.query(
-      `INSERT INTO check_in_history (room_id, room_number, guest_name, guest_document, guest_phone, nights, total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [roomId, room.number, guest.fullName, guest.documentId, guest.phone, billing.nights, billing.total],
+      `INSERT INTO check_in_history (room_id, room_number, guest_name, guest_document, guest_phone, nights, total, performed_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [roomId, room.number, guest.fullName, guest.documentId, guest.phone, billing.nights, billing.total, userId ?? null],
     )
 
     await client.query('COMMIT')
@@ -395,7 +438,7 @@ app.post('/api/checkin', async (req, res, next) => {
 app.post('/api/checkout', async (req, res, next) => {
   const client = await pool.connect()
   try {
-    const { roomId, forced, note } = req.body
+    const { roomId, forced, note, userId, version } = req.body
     if (!roomId) {
       client.release()
       return res.status(400).json({ error: 'roomId es requerido' })
@@ -412,6 +455,17 @@ app.post('/api/checkout', async (req, res, next) => {
     if (room.status !== 'Ocupada') {
       await client.query('ROLLBACK')
       return res.status(409).json({ error: `Check-out bloqueado: habitación "${room.status}"` })
+    }
+
+    // Bloqueo optimista: version es opcional a propósito (mismo criterio que
+    // userId) para no romper otros flujos que todavía no lo manden. Si viene,
+    // se compara contra la version actual bajo FOR UPDATE — si no coincide,
+    // otro usuario modificó esta habitación desde que el cliente la leyó.
+    if (version !== undefined && Number(version) !== room.version) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({
+        error: 'Esta habitación fue modificada por otro usuario. Recarga la información e intenta de nuevo.',
+      })
     }
 
     // La API no confía en que la UI ya cobró/devolvió el saldo: mismo
@@ -441,17 +495,17 @@ app.post('/api/checkout', async (req, res, next) => {
       }
       if (balance > 0) {
         await client.query(
-          `INSERT INTO payments (room_id, stay_id, type, amount, method, note)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [roomId, stayId, PAYMENT_TYPES.UNCOLLECTED_BALANCE, balance, 'No aplica', note.trim()],
+          `INSERT INTO payments (room_id, stay_id, type, amount, method, note, registered_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [roomId, stayId, PAYMENT_TYPES.UNCOLLECTED_BALANCE, balance, 'No aplica', note.trim(), userId ?? null],
         )
       }
     }
 
     await client.query(
-      `INSERT INTO check_out_history (room_id, room_number, guest_name, total)
-       VALUES ($1, $2, $3, $4)`,
-      [roomId, room.number, room.guest_name, room.total],
+      `INSERT INTO check_out_history (room_id, room_number, guest_name, total, performed_by)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [roomId, room.number, room.guest_name, room.total, userId ?? null],
     )
 
     // Si esta estadía vino de una reserva (marcada 'En curso' al hacer
@@ -466,7 +520,8 @@ app.post('/api/checkout', async (req, res, next) => {
 
     const updated = await client.query(
       `UPDATE rooms SET status = 'Sucia', guest_name = NULL, guest_document = NULL, guest_phone = NULL,
-        check_in_date = NULL, check_out_date = NULL, base_rate = NULL, discount = NULL, total = NULL
+        check_in_date = NULL, check_out_date = NULL, base_rate = NULL, discount = NULL, total = NULL,
+        version = version + 1
        WHERE id = $1 RETURNING *`,
       [roomId],
     )
@@ -505,9 +560,14 @@ app.get('/api/payments', async (req, res, next) => {
     const stayId = await findActiveStayId(pool, roomId)
     if (!stayId) return res.json([])
 
-    const { rows } = await pool.query('SELECT * FROM payments WHERE stay_id = $1 ORDER BY created_at ASC', [
-      stayId,
-    ])
+    const { rows } = await pool.query(
+      `SELECT p.*, u.full_name AS registered_by_name
+         FROM payments p
+         LEFT JOIN users u ON u.id = p.registered_by
+        WHERE p.stay_id = $1
+        ORDER BY p.created_at ASC`,
+      [stayId],
+    )
     res.json(rows.map(mapPayment))
   } catch (err) {
     next(err)
@@ -517,7 +577,7 @@ app.get('/api/payments', async (req, res, next) => {
 app.post('/api/payments', async (req, res, next) => {
   const client = await pool.connect()
   try {
-    const { roomId, type, amount, method } = req.body
+    const { roomId, type, amount, method, userId, version } = req.body
     if (!roomId || !type || amount === undefined) {
       client.release()
       return res.status(400).json({ error: 'Datos de pago incompletos' })
@@ -536,6 +596,17 @@ app.post('/api/payments', async (req, res, next) => {
       return res
         .status(409)
         .json({ error: `No se puede registrar el pago: habitación "${room.status}" sin estadía activa` })
+    }
+
+    // Bloqueo optimista: mismo criterio que POST /api/checkout — version es
+    // opcional, y si viene y no coincide con la fila bajo FOR UPDATE, otro
+    // usuario ya tocó esta habitación (ej. otro pago o un checkout) desde que
+    // el cliente la leyó.
+    if (version !== undefined && Number(version) !== room.version) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({
+        error: 'Esta habitación fue modificada por otro usuario. Recarga la información e intenta de nuevo.',
+      })
     }
 
     const stayId = await findActiveStayId(client, roomId)
@@ -559,13 +630,21 @@ app.post('/api/payments', async (req, res, next) => {
     }
 
     const inserted = await client.query(
-      `INSERT INTO payments (room_id, stay_id, type, amount, method)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [roomId, stayId, type, amount, method || 'Efectivo'],
+      `INSERT INTO payments (room_id, stay_id, type, amount, method, registered_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [roomId, stayId, type, amount, method || 'Efectivo', userId ?? null],
     )
 
+    // A diferencia de checkout, este endpoint no tenía un UPDATE rooms
+    // propio — se agrega solo para avanzar version, así el bloqueo optimista
+    // también detecta dos pagos concurrentes sobre la misma estadía (la
+    // razón de ser de aplicarlo aquí, no solo en checkout).
+    await client.query('UPDATE rooms SET version = version + 1 WHERE id = $1', [roomId])
+
+    const userResult = userId ? await client.query('SELECT full_name FROM users WHERE id = $1', [userId]) : { rows: [] }
+
     await client.query('COMMIT')
-    res.status(201).json(mapPayment(inserted.rows[0]))
+    res.status(201).json(mapPayment({ ...inserted.rows[0], registered_by_name: userResult.rows[0]?.full_name }))
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
@@ -600,24 +679,35 @@ app.get('/api/history', async (req, res, next) => {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    // Tercera rama: pagos 'Saldo pendiente por cobrar' de un checkout
-    // forzado (walk-out), unidos a check_in_history para poder mostrar el
-    // documento del huésped (Bug 3) y localizarlo. Se envuelve en una
-    // subconsulta para exponer columnas sin ambigüedad antes de aplicarle el
-    // mismo `where` (payments y check_in_history comparten `created_at`).
+    // Las 3 ramas se envuelven en una subconsulta cada una, exponiendo un set
+    // de columnas fijo y sin ambigüedad, antes de aplicarles el mismo `where`
+    // (varias de las tablas involucradas comparten nombres de columna entre
+    // sí y con `users` — ej. `created_at` existe en las 3 tablas de historial
+    // Y en `users` — referenciarlas sin calificar rompería con "column
+    // reference is ambiguous" apenas se agrega el LEFT JOIN a users).
     const { rows } = await pool.query(
-      `SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, NULL::text AS note, 'Check-in' AS type
-         FROM check_in_history ${where}
+      `SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, type FROM (
+         SELECT cih.id, cih.room_id, cih.room_number, cih.guest_name, cih.guest_document, cih.nights, cih.total,
+                cih.created_at, NULL::text AS note, u.full_name AS performed_by_name, 'Check-in' AS type
+           FROM check_in_history cih
+           LEFT JOIN users u ON u.id = cih.performed_by
+       ) checkin_entries ${where}
        UNION ALL
-       SELECT id, room_id, room_number, guest_name, NULL::varchar AS guest_document, NULL::integer AS nights, total, created_at, NULL::text AS note, 'Check-out' AS type
-         FROM check_out_history ${where}
+       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, type FROM (
+         SELECT coh.id, coh.room_id, coh.room_number, coh.guest_name, NULL::varchar AS guest_document,
+                NULL::integer AS nights, coh.total, coh.created_at, NULL::text AS note,
+                u.full_name AS performed_by_name, 'Check-out' AS type
+           FROM check_out_history coh
+           LEFT JOIN users u ON u.id = coh.performed_by
+       ) checkout_entries ${where}
        UNION ALL
-       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, type FROM (
+       SELECT id, room_id, room_number, guest_name, guest_document, nights, total, created_at, note, performed_by_name, type FROM (
          SELECT p.id, p.room_id, cih.room_number, cih.guest_name, cih.guest_document,
                 NULL::integer AS nights, p.amount AS total, p.created_at, p.note,
-                'Pendiente de cobro' AS type
+                u.full_name AS performed_by_name, 'Pendiente de cobro' AS type
            FROM payments p
            JOIN check_in_history cih ON cih.id = p.stay_id
+           LEFT JOIN users u ON u.id = p.registered_by
           WHERE p.type = 'Saldo pendiente por cobrar'
        ) pending_entries ${where}
        ORDER BY created_at DESC`,
@@ -628,6 +718,112 @@ app.get('/api/history', async (req, res, next) => {
     next(err)
   }
 })
+
+// ---------------------------------------------------------------------------
+// Users (login simulado + CRUD de usuarios)
+// ---------------------------------------------------------------------------
+
+const USER_ROLES = ['Recepcionista', 'Administrador']
+
+// No hay autenticación real (login simulado: se elige un usuario de una
+// lista, sin contraseña/hash/JWT), así que el backend no tiene sesión
+// propia. El control de que solo un Administrador gestione usuarios se hace
+// con este campo, que el frontend manda en cada request junto con el rol de
+// quien está "logueado" ahí. Es deliberadamente simple — no es seguridad
+// real, es solo consistencia con que el login tampoco lo es — y es una
+// limitación conocida, no un descuido.
+function requireAdmin(req, res) {
+  if (req.body.actingRole !== 'Administrador') {
+    res.status(403).json({ error: 'Solo un Administrador puede gestionar usuarios' })
+    return false
+  }
+  return true
+}
+
+app.get('/api/users', async (req, res, next) => {
+  try {
+    const { active } = req.query
+    const { rows } = await pool.query(
+      active === 'true' ? 'SELECT * FROM users WHERE active = true ORDER BY full_name' : 'SELECT * FROM users ORDER BY full_name',
+    )
+    res.json(rows.map(mapUser))
+  } catch (err) {
+    next(err)
+  }
+})
+
+app.post('/api/users', async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res)) return
+
+    const { fullName, username, role } = req.body
+    const trimmedName = (fullName ?? '').trim()
+    const trimmedUsername = (username ?? '').trim()
+    if (trimmedName === '' || trimmedUsername === '') {
+      return res.status(400).json({ error: 'Nombre y usuario son obligatorios' })
+    }
+    if (!USER_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Rol inválido' })
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (full_name, username, role) VALUES ($1, $2, $3) RETURNING *`,
+      [trimmedName, trimmedUsername, role],
+    )
+    res.status(201).json(mapUser(rows[0]))
+  } catch (err) {
+    // 23505 = unique_violation (constraint UNIQUE de username) — se traduce
+    // a un 400 con mensaje claro en vez de dejar pasar el 500 genérico.
+    if (err.code === '23505') return res.status(400).json({ error: 'Ese nombre de usuario ya existe' })
+    next(err)
+  }
+})
+
+// username no es editable una vez creado (para no romper la trazabilidad de
+// quién hizo qué si alguien cambia de nombre de usuario) — solo se aceptan
+// fullName/role/active.
+app.put('/api/users/:id', async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res)) return
+
+    const { id } = req.params
+    const { fullName, role, active } = req.body
+    const sets = []
+    const values = []
+    let i = 1
+
+    if (fullName !== undefined) {
+      const trimmedName = fullName.trim()
+      if (trimmedName === '') return res.status(400).json({ error: 'El nombre no puede estar vacío' })
+      sets.push(`full_name = $${i++}`)
+      values.push(trimmedName)
+    }
+    if (role !== undefined) {
+      if (!USER_ROLES.includes(role)) return res.status(400).json({ error: 'Rol inválido' })
+      sets.push(`role = $${i++}`)
+      values.push(role)
+    }
+    if (active !== undefined) {
+      sets.push(`active = $${i++}`)
+      values.push(Boolean(active))
+    }
+
+    if (sets.length === 0) return res.status(400).json({ error: 'Nada para actualizar' })
+
+    values.push(id)
+    const { rows } = await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values)
+    if (rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' })
+    res.json(mapUser(rows[0]))
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'Ese nombre de usuario ya existe' })
+    next(err)
+  }
+})
+
+// No hay DELETE /api/users/:id a propósito: eliminar un usuario rompería la
+// trazabilidad histórica (created_by/performed_by/registered_by quedarían
+// apuntando a un id inexistente en vez de simplemente NULL vía ON DELETE SET
+// NULL). Dar de baja es PUT /api/users/:id con { active: false }.
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true })
