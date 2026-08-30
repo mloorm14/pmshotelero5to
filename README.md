@@ -371,6 +371,52 @@ src/
     roles.js          Roles y mapa de acceso a módulos
 ```
 
-## Pendiente para la siguiente sesión
+## Pruebas automatizadas end-to-end (Playwright)
 
-**Automatizar con Playwright** (no está instalado en el proyecto todavía) los escenarios verificados manualmente/vía API en esta ronda — usuarios, trazabilidad, bloqueo optimista y minibar/extras — y los 10 casos de prueba de integración mínimos que pide la materia. Los casos #27-34 de la tabla de arriba son los candidatos más directos para el primer set de specs E2E.
+El proyecto incluye una suite de Playwright (`@playwright/test`) que cubre 10 de los casos de prueba de integración de la tabla anterior (#27-34 y afines), en `tests/` (9 archivos: TC-05 y TC-06 comparten uno solo, por ser un mismo flujo continuo de check-out).
+
+### Prerrequisitos
+
+- Los mismos del backend y el frontend (ver "Instalación y ejecución" más arriba): Node.js, Docker Desktop corriendo, y las variables de entorno ya configuradas (`.env`/`.env.example`).
+- PostgreSQL levantado vía `docker compose up -d` desde `server/` — Playwright no lo arranca por ti.
+
+### 1. Instalar dependencias
+
+```bash
+npm install
+npx playwright install   # descarga los navegadores que usa Playwright (Chromium)
+```
+
+### 2. Dejar la base de datos en estado de seed conocido
+
+```bash
+cd server
+npm run migrate
+cd ..
+```
+
+Los 10 casos asumen los datos de `seed.sql` como punto de partida. Corrieron pensados para poder repetirse sin volver a migrar entre corridas (los datos que cada test crea son únicos por corrida), salvo que se indique lo contrario en el propio archivo del caso.
+
+### 3. Correr la suite completa
+
+```bash
+npx playwright test
+```
+
+`playwright.config.js` ya está configurado para levantar el backend y el frontend automáticamente si no están corriendo (`webServer`), así que no hace falta abrir las dos terminales manuales solo para correr los tests — aunque si ya las tienes abiertas, Playwright reutiliza esos servidores en vez de levantar otros.
+
+Para correr un caso puntual:
+
+```bash
+npx playwright test tests/TC-04-anticipo-excede-total.spec.js
+```
+
+### 4. Ver el reporte visual
+
+```bash
+npx playwright show-report
+```
+
+Muestra el resultado de cada caso con pasos, capturas y trazas (en caso de fallo).
+
+La carpeta `evidence/` contiene las capturas de pantalla generadas por estos mismos casos, usadas como evidencia en el informe de la actividad de V&V correspondiente (fuera de este repositorio).
