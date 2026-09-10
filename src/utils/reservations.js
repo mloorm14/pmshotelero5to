@@ -1,6 +1,6 @@
-import { toDateOnly, isValidDateOnly, validateDateRange, isPastDate } from './dates'
-import { validateDocumentId, validatePhone } from './validation'
-import { RESERVATION_STATUSES } from '../constants/reservations'
+import { toDateOnly, isValidDateOnly, validateDateRange, isPastDate } from './dates.js'
+import { validateDocumentId, validatePhone } from './validation.js'
+import { RESERVATION_STATUSES } from '../constants/reservations.js'
 
 export { validateDateRange, isPastDate }
 

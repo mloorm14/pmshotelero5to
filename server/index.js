@@ -5,6 +5,7 @@ import { pool } from './db.js'
 import { validateRoom } from '../src/utils/rooms.js'
 import { validatePayment, calculateBalanceDue, PAYMENT_TYPES } from '../src/utils/payments.js'
 import { validateDocumentId, validatePhone } from '../src/utils/validation.js'
+import { hasDateOverlap } from '../src/utils/reservations.js'
 
 dotenv.config()
 
@@ -312,6 +313,7 @@ app.get('/api/reservations', async (req, res, next) => {
 })
 
 app.post('/api/reservations', async (req, res, next) => {
+  const client = await pool.connect()
   try {
     const { roomId, guestName, checkInDate, checkOutDate, guestDocument, guestPhone, userId } = req.body
     if (!roomId || !guestName || !checkInDate || !checkOutDate) {
@@ -332,24 +334,59 @@ app.post('/api/reservations', async (req, res, next) => {
       if (!phoneValidation.valid) return res.status(400).json({ error: phoneValidation.error })
     }
 
+    await client.query('BEGIN')
+
+    // Se bloquea la fila de rooms (mismo patrón que /api/checkin y
+    // /api/checkout) para serializar creaciones concurrentes sobre la misma
+    // habitación: sin este lock, dos requests simultáneos podrían leer "sin
+    // solapamiento" antes de que cualquiera de los dos inserte su reserva.
+    const roomResult = await client.query('SELECT * FROM rooms WHERE id = $1 FOR UPDATE', [roomId])
+    const room = roomResult.rows[0]
+    if (!room) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Habitación no encontrada' })
+    }
+
+    const existingResult = await client.query(
+      `SELECT id, room_id, check_in_date, check_out_date, status FROM reservations WHERE room_id = $1`,
+      [roomId],
+    )
+    const existingReservations = existingResult.rows.map((row) => ({
+      id: row.id,
+      roomId: row.room_id,
+      checkInDate: row.check_in_date,
+      checkOutDate: row.check_out_date,
+      status: row.status,
+    }))
+    if (hasDateOverlap(existingReservations, roomId, checkInDate, checkOutDate)) {
+      await client.query('ROLLBACK')
+      return res
+        .status(409)
+        .json({ error: 'La habitación ya tiene una reserva confirmada en fechas que se cruzan con las indicadas.' })
+    }
+
     // userId es opcional (no debe romper un caller que todavía no lo mande);
     // si no viene, created_by queda NULL.
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `INSERT INTO reservations (room_id, guest_name, guest_document, guest_phone, check_in_date, check_out_date, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [roomId, guestName.trim(), trimmedDocument || null, trimmedPhone || null, checkInDate, checkOutDate, userId ?? null],
     )
-    const roomResult = await pool.query('SELECT number FROM rooms WHERE id = $1', [roomId])
-    const userResult = userId ? await pool.query('SELECT full_name FROM users WHERE id = $1', [userId]) : { rows: [] }
+    const userResult = userId ? await client.query('SELECT full_name FROM users WHERE id = $1', [userId]) : { rows: [] }
+
+    await client.query('COMMIT')
     res.status(201).json(
       mapReservation({
         ...rows[0],
-        room_number: roomResult.rows[0]?.number,
+        room_number: room.number,
         created_by_name: userResult.rows[0]?.full_name,
       }),
     )
   } catch (err) {
+    await client.query('ROLLBACK')
     next(err)
+  } finally {
+    client.release()
   }
 })
 
