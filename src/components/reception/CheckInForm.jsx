@@ -26,6 +26,7 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
 
   const nights = calculateNights(form.checkInDate, form.checkOutDate)
   const nightsValid = isNightsValid(nights)
+  const subtotal = baseRate * nights
   const total = calculateTotal(baseRate, nights, discount)
   const hasInvalidDiscount = !isTotalValid(total)
   const hasInvalidAdvance = advance > 0 && total > 0 && advance > total
@@ -315,6 +316,34 @@ export default function CheckInForm({ selectedRoom, form, onChange, onCheckIn })
                   El anticipo (${advance.toFixed(2)}) no puede superar el total de la estadía (${total.toFixed(2)}).
                 </p>
               )}
+            </div>
+
+            <div className="rounded-lg border border-ink-200 bg-ink-50 p-5">
+              <h4 className="mb-4 text-sm font-semibold text-ink-800">Desglose del cobro</h4>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-ink-500">Tarifa base por noche</dt>
+                  <dd className="text-ink-700">${baseRate.toFixed(2)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-500">Noches</dt>
+                  <dd className="text-ink-700">{nights}</dd>
+                </div>
+                <div className="flex justify-between border-t border-ink-200 pt-2">
+                  <dt className="text-ink-500">Subtotal (tarifa × noches)</dt>
+                  <dd className="font-medium text-ink-800">${subtotal.toFixed(2)}</dd>
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-ink-500">Descuento aplicado</dt>
+                    <dd className="text-emerald-700">− ${discount.toFixed(2)}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-ink-200 pt-2">
+                  <dt className="font-semibold text-ink-700">Total</dt>
+                  <dd className="text-lg font-bold text-wine-700">${total.toFixed(2)}</dd>
+                </div>
+              </dl>
             </div>
 
             <button

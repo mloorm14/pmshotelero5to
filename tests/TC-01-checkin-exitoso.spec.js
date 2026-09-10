@@ -23,8 +23,11 @@ test('TC-01: check-in exitoso deja la habitación 101 Ocupada con el total corre
 
   // La tarifa se precarga con room.defaultRate ($45.00) al seleccionar la
   // habitación — 1 noche por defecto (fechas ya vienen hoy → mañana), así
-  // que el total esperado es 45.00 * 1 - 0 = 45.00.
-  await expect(page.getByText('$45.00')).toBeVisible()
+  // que el total esperado es 45.00 * 1 - 0 = 45.00. .first() porque el
+  // desglose de cobro repite el mismo monto más abajo en la página (Tarifa
+  // base, Subtotal y Total); el total de la caja "Facturación" es el primero
+  // en el DOM.
+  await expect(page.getByText('$45.00').first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Confirmar Check-in' }).click()
 

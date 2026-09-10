@@ -26,7 +26,10 @@ test('TC-04: un anticipo mayor al total bloquea el check-in completo', async ({ 
   await page.getByLabel('Teléfono').fill('0976543210')
 
   // Tarifa por defecto de la 202 es $80.00 -> total de 1 noche = $80.00.
-  await expect(page.getByText('$80.00')).toBeVisible()
+  // .first() porque el desglose de cobro repite el mismo monto más abajo en
+  // la página (Tarifa base, Subtotal y Total); el total de la caja
+  // "Facturación" es el primero en el DOM.
+  await expect(page.getByText('$80.00').first()).toBeVisible()
   await page.getByLabel('Monto del anticipo ($)').fill('100')
 
   await expect(
