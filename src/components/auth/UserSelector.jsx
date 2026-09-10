@@ -1,8 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function UserSelector({ users, loading, onLogin }) {
   const activeUsers = users.filter((u) => u.active)
   const [selectedId, setSelectedId] = useState(() => activeUsers[0]?.id ?? '')
+
+  // users llega vacío en el primer render (se carga async desde la API), así
+  // que selectedId arranca en ''. Cuando los usuarios llegan, el <select> se
+  // repuebla y el navegador cae de vuelta al primer <option> por defecto
+  // (no hay <option value="">) — se ve seleccionado, pero selectedId sigue
+  // en '' y "Entrar" no encuentra a nadie con ese id. Se resincroniza en
+  // cuanto haya usuarios activos y el seleccionado actual no sea uno de ellos.
+  useEffect(() => {
+    if (activeUsers.length === 0) return
+    // selectedId llega como string cuando viene del onChange del <select>
+    // (los value de HTML siempre son string), por eso se compara con
+    // Number(...) — mismo criterio que ya usa handleSubmit más abajo.
+    if (activeUsers.some((u) => u.id === Number(selectedId))) return
+    setSelectedId(activeUsers[0].id)
+  }, [activeUsers, selectedId])
 
   function handleSubmit(e) {
     e.preventDefault()
