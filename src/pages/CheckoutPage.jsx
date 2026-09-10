@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ROOM_STATUSES } from '../constants/rooms'
 import StatusBadge from '../components/shared/StatusBadge'
 import InlineMessage from '../components/shared/InlineMessage'
+import Breadcrumb from '../components/shared/Breadcrumb'
 import MinibarPanel from '../components/checkout/MinibarPanel'
 import { calculateNights } from '../utils/billing'
 import { calculateNetAdvances, calculateBalanceDue, sumMinibarCharges, PAYMENT_TYPES } from '../utils/payments'
@@ -183,6 +184,12 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment, onAddMin
   const [paymentsByRoom, setPaymentsByRoom] = useState({})
   const [minibarChargesByRoom, setMinibarChargesByRoom] = useState({})
   const [minibarProducts, setMinibarProducts] = useState([])
+  // No hay "selección" real en esta página (todas las habitaciones ocupadas
+  // se muestran a la vez) — activeRoomId solo alimenta el breadcrumb, se
+  // actualiza con la tarjeta que el usuario tocó/enfocó por última vez y se
+  // apaga solo si esa habitación deja de estar ocupada (ver breadcrumbRoom).
+  const [activeRoomId, setActiveRoomId] = useState(null)
+  const breadcrumbRoom = occupiedRooms.find((r) => r.id === activeRoomId)
 
   const loadPayments = useCallback(
     async (roomId) => {
@@ -274,6 +281,7 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment, onAddMin
 
   return (
     <div>
+      <Breadcrumb module="Caja y Salidas" roomNumber={breadcrumbRoom?.number} />
       <InlineMessage message={message} />
       <CheckoutAlertsPanel rooms={rooms} />
       {occupiedRooms.length === 0 ? (
@@ -301,6 +309,8 @@ export default function CheckoutPage({ rooms, onCheckOut, onAddPayment, onAddMin
             return (
               <article
                 key={room.id}
+                onClick={() => setActiveRoomId(room.id)}
+                onFocusCapture={() => setActiveRoomId(room.id)}
                 className="rounded-lg border border-wine-200 bg-white p-6 shadow-sm"
               >
                 <div className="mb-4 flex items-center justify-between">

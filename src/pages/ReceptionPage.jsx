@@ -3,6 +3,7 @@ import RoomSelector from '../components/reception/RoomSelector'
 import CheckInForm from '../components/reception/CheckInForm'
 import ReservationConversionPanel from '../components/reception/ReservationConversionPanel'
 import InlineMessage from '../components/shared/InlineMessage'
+import Breadcrumb from '../components/shared/Breadcrumb'
 import { useTransientMessage } from '../hooks/useTransientMessage'
 import { getTodayISO, addDaysISO } from '../utils/dates'
 import { calculateNights, calculateTotal } from '../utils/billing'
@@ -136,6 +137,7 @@ export default function ReceptionPage({ rooms, reservations, onCheckIn, onAddPay
 
   return (
     <div className="space-y-8">
+      <Breadcrumb module="Recepción" roomNumber={selectedRoom?.number} />
       <InlineMessage message={message} />
       {convertibleReservations.length > 0 && (
         <ReservationConversionPanel
